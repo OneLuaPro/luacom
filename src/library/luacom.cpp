@@ -2288,13 +2288,13 @@ LUACOM_API void luacom_open(lua_State *L)
 
   // loads the lua code that implements the remaining
   // features of LuaCOM
-  int top1 = lua_gettop(L);
-#ifdef LUA_DEBUGGING
-  lua_dofile(L, "luacom5.lua");
-#else
-#include "luacom5.loh"
-#endif
-  if (lua_gettop(L) > top1) lua_error(L); // failed loading
+//   int top1 = lua_gettop(L);
+// #ifdef LUA_DEBUGGING
+//   lua_dofile(L, "luacom5.lua");
+// #else
+// #include "luacom5.loh"
+// #endif
+//   if (lua_gettop(L) > top1) lua_error(L); // failed loading
 
   idxDispatch = (void*)&luacom_runningInprocess;
 
