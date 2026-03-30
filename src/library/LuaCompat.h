@@ -41,5 +41,7 @@ extern "C"
 #define lua_boxpointer(L,u) \
     (*(void **)(lua_newuserdata(L, sizeof(void *))) = (u)) 
 
+#define luaL_register(L, n, f) luaL_newlib(L, f); lua_pushvalue(L, -1); lua_setglobal(L, n)
+
 #endif /* __LUACOMPAT_H */
 
