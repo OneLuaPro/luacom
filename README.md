@@ -1,6 +1,6 @@
 # LuaCOM (OneLuaPro Edition)
 
-This repository is a **consolidated super-fork** of the original [davidm/luacom](https://github.com). It merges the most critical advancements, bug fixes, and modernizations from across the entire GitHub fork ecosystem into a single, definitive codebase compatible with modern Lua environments.
+This repository is a **consolidated super-fork** of the original [davidm/luacom](https://github.com/davidm/luacom). It merges the most critical advancements, bug fixes, and modernizations from across the entire GitHub fork ecosystem into a single, definitive codebase compatible with modern Lua environments.
 
 ## Consolidation Overview
 
@@ -9,12 +9,12 @@ This version was built by systematically analyzing the fork tree and merging the
 ### Integrated Forks & Contributions
 The following "ahead" branches have been merged into this master:
 
-*   **[Eunsolfs/luacom53](https://github.com) (+67 commits):** Major Lua 5.3/5.4 support, 64-bit integer handling, and modern type conversion.
-*   **[fiendish/luacom](https://github.com) (+42 commits):** Critical stability patches, memory leak fixes (especially in SAFEARRAY handling), and refactoring using smart pointers.
-*   **[moteus/luacom](https://github.com) (+35 commits):** The modern architectural foundation for Lua 5.2/5.3 compatibility and Appveyor CI integration.
-*   **[udbg/luacom](https://github.com) (+1 commit):** Added modern **xmake** build system support.
-*   **[shere-avintec/luacom](https://github.com) (+1 commit):** CI/CD environment optimizations.
-*   **[JoshuaTiffany/luacom](https://github.com) (+1 commit):** Metadata and build-info updates.
+*   **[Eunsolfs/luacom53](https://github.com/Eunsolfs/luacom53) (+67 commits):** Major Lua 5.3/5.4 support, 64-bit integer handling, and modern type conversion.
+*   **[fiendish/luacom](https://github.com/fiendish/luacom) (+42 commits):** Critical stability patches, memory leak fixes (especially in SAFEARRAY handling), and refactoring using smart pointers.
+*   **[moteus/luacom](https://github.com/moteus/luacom) (+35 commits):** The modern architectural foundation for Lua 5.2/5.3 compatibility and Appveyor CI integration.
+*   **[udbg/luacom](https://github.com/udbg/luacom) (+1 commit):** Added modern **xmake** build system support.
+*   **[shere-avintec/luacom](https://github.com/shere-avintec/luacom) (+1 commit):** CI/CD environment optimizations.
+*   **[JoshuaTiffany/luacom](https://github.com/JoshuaTiffany/luacom) (+1 commit):** Metadata and build-info updates.
 
 ## Key Features & Improvements
 
