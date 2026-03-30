@@ -8,7 +8,6 @@ environment:
 
 platform:
   - x64
-  - x86
 
 before_build:
   - set PATH=C:\Python27\Scripts;%PATH%
