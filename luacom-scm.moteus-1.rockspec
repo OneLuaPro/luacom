@@ -1,5 +1,5 @@
 package = "LuaCOM"
-version = "scm.moteus-1"
+version = "scm.moteus-2"
 source = {
   url = "https://github.com/moteus/luacom/archive/master.zip",
   dir = "luacom-master",

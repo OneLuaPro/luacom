@@ -127,8 +127,10 @@ tLuaCOM::~tLuaCOM()
     }
   }
 
-  delete typehandler;
-  typehandler = NULL;
+  if( typehandler) {
+	delete typehandler;
+    typehandler = NULL;
+  }
 
   tUtil::log_verbose("tLuaCOM", "%.4d:destroyed", ID);
 }
@@ -769,3 +771,8 @@ bool tLuaCOM::hasTypeInfo(void)
     return false;
 }
 
+// Do an extra Release() on the COM Object. 
+// Not necessary if all works well. To circumvent buggy Software :-)
+void tLuaCOM::releaseComObject() {
+  if(pdisp) pdisp->Release();
+}

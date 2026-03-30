@@ -14,7 +14,8 @@ assert(table)
 assert(string)
 assert(io)
 
-
+-- https://github.com/1linux/luacom/commit/7828d9c91a3a97f042a83cd7507af403e0c1d1c1
+luacomE.SAFEARRAY_PATCH = true  
 --
 -- ExportConstants
 --

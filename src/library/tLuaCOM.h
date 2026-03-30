@@ -76,6 +76,7 @@ public:
    bool getFUNCDESC(const char* name, FuncInfo& funcinfo);
    bool getConstant(lua_State* L, const char* name);
    bool getDISPID(const char* name, DISPID* dispid);
+   void releaseComObject();
 
   volatile static long NEXT_ID;
 protected:

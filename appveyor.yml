@@ -15,7 +15,7 @@ before_build:
   - pip install hererocks
   - if /I "%platform%"=="x86" set HR_TARGET=vs_32
   - if /I "%platform%"=="x64" set HR_TARGET=vs_64
-  - hererocks env --%LUA% --target %HR_TARGET% -r2.4.4
+  - hererocks env --%LUA% --target %HR_TARGET% -r2.4.4  # latest https://github.com/Eunsolfs/luacom53/commit/7d05d69e21772119b58425259efc9b6b8b8308a7
   - call env\bin\activate
 
 build_script:
@@ -27,3 +27,6 @@ test_script:
 artifacts:
   - path: bin/luacom.dll
     name: luacom
+
+test_script:
+  - lua -lluacom -v -e"print{}"

@@ -2137,6 +2137,20 @@ static int luacom_SetCodepage(lua_State *L) {
   return 0;
 }
 
+
+static int luacom_ReleaseComObject(lua_State *L)
+{
+  // check parameters
+  tLuaCOM* obj = (tLuaCOM *) LuaBeans::check_tag(L, 1);
+
+  if(obj->hasTypeInfo())
+  {
+	obj->releaseComObject();
+  }
+  return 0;
+}
+
+
 ///
 /// Table of functions exported by Lua.
 ///
@@ -2176,7 +2190,8 @@ static struct luaL_Reg functions_tb []=
   {"StartMessageLoop", luacom_StartMessageLoop},
   {"RoundTrip", luacom_RoundTrip},
   {"GetCodepage", luacom_GetCodepage},	// -hg 24.9.2015
-  {"SetCodepage", luacom_SetCodepage},  
+  {"SetCodepage", luacom_SetCodepage},
+  {"ReleaseComObject", luacom_ReleaseComObject}, //hg 06.09.2022
   {NULL, NULL}
 };
   
