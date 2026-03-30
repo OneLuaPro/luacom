@@ -23,6 +23,26 @@ extern "C" {
 
 #define UNUSED(x) (void)(x)
 
+#if LUA_VERSION_NUM >= 502
+
+#ifndef luaL_register
+
+void luaL_register (lua_State *L, const char *libname, const luaL_Reg *l){
+  if(libname) lua_newtable(L);
+
+  luaL_setfuncs(L, l, 0);
+
+  if(libname){
+    lua_pushvalue(L, -1);
+    lua_setglobal(L, libname);
+  }
+}
+
+#endif
+
+#endif
+
+
 int luaCompat_call(lua_State* L, int nargs, int nresults)
 {
 	tStringBuffer err;
@@ -105,11 +125,7 @@ int luaCompat_isOfType(lua_State* L, const char* module, const char* type)
   luaCompat_getType(L, -1);
   luaCompat_pushTypeByName(L, module, type);
 
-#if defined(NLUA51)
-  result = (lua_compare(L, -1, -2,LUA_OPEQ) ? 1 : 0);
-#else
   result = (lua_equal(L, -1, -2) ? 1 : 0);
-#endif
   lua_pop(L, 2);
 
   LUASTACK_CLEAN(L, 0);

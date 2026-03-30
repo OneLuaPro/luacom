@@ -198,7 +198,7 @@ static int luacom_ShowHelp(lua_State *L)
 
   Returns
     objeto luacom que encapsula objeto luacom implementado pela
-    tabela fornecida ou nil se nao for possível estabelecer a
+    tabela fornecida ou nil se nao for possÃ­vel estabelecer a
     conexao
     cookir do connection point
 
@@ -2126,6 +2126,16 @@ static int luacom_RoundTrip(lua_State *L) {
 }
 
 
+static int luacom_GetCodepage(lua_State *L) {
+  lua_pushinteger(L, code_page);  
+  return 1;  /* number of results */
+}
+
+// https://msdn.microsoft.com/de-de/library/windows/desktop/dd317756%28v=vs.85%29.aspx
+static int luacom_SetCodepage(lua_State *L) {
+  code_page=(UINT)luaL_checkinteger(L, 1);
+  return 0;
+}
 
 ///
 /// Table of functions exported by Lua.
@@ -2165,6 +2175,8 @@ static struct luaL_Reg functions_tb []=
   {"DetectAutomation", luacom_LuaDetectAutomation},
   {"StartMessageLoop", luacom_StartMessageLoop},
   {"RoundTrip", luacom_RoundTrip},
+  {"GetCodepage", luacom_GetCodepage},	// -hg 24.9.2015
+  {"SetCodepage", luacom_SetCodepage},  
   {NULL, NULL}
 };
   

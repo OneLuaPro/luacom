@@ -21,6 +21,15 @@ extern "C"
 
 #define MAX_VALID_STRING_SIZE 1000
 
+// https://github.com/windtail/luacom/commit/3852e47c2f0fe77477cbde54541228cd2f7b8901
+// - in none-english environment (i am Chinese) we DO NOT use CP_UTF8, CP_ACP should be used
+// - while Cygwin default convert filename internally to UTF-8
+// - we have to use ASCII format for our lua source code, if you prefer UTF-8, you need luaiconv to convert UTF-8 to your ASCII format (GBK or other)
+#ifdef __CYGWIN__
+UINT code_page=CP_UTF8; // By default, Cygwin internally convert filename to UTF-8
+#else
+UINT code_page=CP_ACP;
+#endif
 
 FILE* tUtil::log_file = NULL;
 CRITICAL_SECTION log_file_cs;
@@ -108,7 +117,7 @@ tStringBuffer tUtil::bstr2string(BSTR bstr, bool nullTerminated)
 
       // gets string length
       int lenMulti = WideCharToMultiByte(
-        CP_UTF8,            // code page
+        code_page,            // code page
         0,            // performance and mapping flags
         bstr,    // wide-character string
         static_cast<int>(lenWide),  // number of chars in string
@@ -125,7 +134,7 @@ tStringBuffer tUtil::bstr2string(BSTR bstr, bool nullTerminated)
 		~C() { delete [] s; } char * s; } str(lenMulti + (nullTerminated? 1 : 0));
 
       int result = WideCharToMultiByte(
-        CP_UTF8,            // code page
+        code_page,            // code page
         0,            // performance and mapping flags
         bstr,    // wide-character string
         static_cast<int>(lenWide),  // number of chars in string
@@ -168,11 +177,11 @@ BSTR tUtil::string2bstr(const char * string, size_t len)
     {
       if (len != -1 && len > INT_MAX) LUACOM_ERROR("string too long");
       int lenWide =
-        MultiByteToWideChar(CP_UTF8, 0, string, static_cast<int>(len), NULL, 0);
+        MultiByteToWideChar(code_page, 0, string, static_cast<int>(len), NULL, 0);
       if(lenWide == 0)
         LUACOM_ERROR(tUtil::GetErrorMessage(GetLastError()));
       bstr = SysAllocStringLen(NULL, lenWide); // plus initializes '\0' terminator
-      MultiByteToWideChar(  CP_UTF8, 0, string, static_cast<int>(len), bstr, lenWide);
+      MultiByteToWideChar(  code_page, 0, string, static_cast<int>(len), bstr, lenWide);
     }
     return bstr;
   }

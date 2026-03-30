@@ -343,9 +343,8 @@ ITypeLib* tCOMUtil::LoadTypeLibFromProgID(const char* ProgID,
     return NULL;
 
   bool version_found = false;
-  int version = -1;
 
-  if(major_version <= 0)
+  if(major_version == 0)
   {
     if(sscanf(ProgID, "%*s.%*s.%hd", &major_version) == 1)
       version_found = true;
@@ -448,6 +447,7 @@ ITypeLib* tCOMUtil::LoadTypeLibFromCLSID(CLSID clsid,
     if(pcClsid)
       free(pcClsid);
 
+    free(bLibID);
     return NULL;
   }
 
@@ -472,8 +472,7 @@ ITypeLib* tCOMUtil::LoadTypeLibFromCLSID(CLSID clsid,
 
   if(major_version > 0 &&
       (
-        (!version_info_found) ||
-        (version_info_found && found == 0)
+        (!version_info_found) || (found == 0)
       )
     )
   {
@@ -489,8 +488,11 @@ ITypeLib* tCOMUtil::LoadTypeLibFromCLSID(CLSID clsid,
       &version_major,
       &version_minor);
 
-    if(!result)
+    if(!result) {
+      free(bLibID);
+      free(wcTypelib);
       return NULL;
+    }
   }
 
   free(bLibID);

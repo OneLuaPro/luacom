@@ -1,7 +1,8 @@
 package = "LuaCOM"
-version = "1.4-1"
+version = "scm.moteus-1"
 source = {
-   url = "http://luacom.luaforge.net/luacom-1.4.zip",
+  url = "https://github.com/moteus/luacom/archive/master.zip",
+  dir = "luacom-master",
 }
 description = {
    summary = "Use COM libraries from Lua",
@@ -18,16 +19,18 @@ build = {
       win32 = {
          type = "make",
          build_variables = {
-            LUA_LIBDLL = "$(LUA_LIBDIR)",
-            LUA_INC = "$(LUA_INCDIR)",
-            LUA = "$(LUA)",
-            LUA_LIBSDLL = "$(LUA_LIB)"
+            CFLAGS     = "$(CFLAGS)",
+            LIBFLAG    = "$(LIBFLAG)",
+            LUA_LIBDIR = "$(LUA_LIBDIR)",
+            LUA_BINDIR = "$(LUA_BINDIR)",
+            LUA_INCDIR = "$(LUA_INCDIR)",
+            LUALIB     = "$(LUALIB)",
+            LUA        = "$(LUA)",
          },
          build_target = "lc_dll",
-            install_variables = {
+         install_variables = {
             LUA_LIBDIR = "$(LIBDIR)",
          }
       }
    }
 }
-

@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include "tStringBuffer.h"  // Added by ClassView
 
+extern UINT code_page;		// can be set by Lua
 struct lua_State;
 class tUtil  
 {

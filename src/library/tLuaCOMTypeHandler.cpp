@@ -127,8 +127,8 @@ void tLuaCOMTypeHandler::com2lua(lua_State* L, VARIANTARG varg_orig, bool is_var
   VARIANT varg;
   VariantInit(&varg);
 
-  lua_getglobal(L,"luacom");
-  lua_pushstring(L,"TableVariants");
+  lua_getglobal(L, "luacom");
+  lua_pushstring(L, "TableVariants");
   lua_gettable(L, -2);
   bool table_variants = lua_toboolean(L, -1) != 0;
   lua_pop(L, 2);
@@ -136,18 +136,19 @@ void tLuaCOMTypeHandler::com2lua(lua_State* L, VARIANTARG varg_orig, bool is_var
 
   // dereferences VARIANTARG (if necessary)
   hr = VariantCopyInd(&varg, &varg_orig);
-  if(FAILED(hr))
+  if (FAILED(hr))
     COM_ERROR(tUtil::GetErrorMessage(hr));
 
   // Gives a different treatment to SAFEARRAYs
-  if(varg.vt & VT_ARRAY)
+  if (varg.vt & VT_ARRAY)
   {
     // treats an array of VT_UI1 as an array of char and
     // converts it to a string
-    if(varg.vt == (VT_ARRAY | VT_UI1))
+    if (varg.vt == (VT_ARRAY | VT_UI1))
       safearray2string(L, varg);
     else
       safearray_com2lua(L, varg);
+    VariantClear(&varg);
   }
   else
   {
@@ -455,6 +456,8 @@ tLuaCOM *tLuaCOMTypeHandler::convert_table(lua_State *L, stkIndex luaval)
 */
 void tLuaCOMTypeHandler::lua2com(lua_State* L, stkIndex luaval, VARIANTARG& varg, VARTYPE type)
 {
+  LUASTACK_SET(L);
+
   CHECKPARAM(luaval > 0);
 
   VariantClear(&varg);
@@ -470,11 +473,7 @@ void tLuaCOMTypeHandler::lua2com(lua_State* L, stkIndex luaval, VARIANTARG& varg
   case LUA_TSTRING:
     {
       tStringBuffer str;
-#if defined(NLUA51)
-      size_t l_len = lua_rawlen(L, luaval);		// For > Lua 5.1
-#else
       size_t l_len = lua_strlen(L, luaval);
-#endif
       str.copyToBuffer(lua_tostring(L, luaval), l_len);
       varg.vt = VT_BSTR;
       varg.bstrVal = tUtil::string2bstr(str, l_len);
@@ -663,7 +662,7 @@ void tLuaCOMTypeHandler::lua2com(lua_State* L, stkIndex luaval, VARIANTARG& varg
 
   case LUA_TBOOLEAN:
     varg.vt = VT_BOOL;
-    varg.boolVal = lua_toboolean(L, luaval);
+    varg.boolVal = lua_toboolean(L, luaval) ? VARIANT_TRUE : VARIANT_FALSE;
     break;
 
 
@@ -685,6 +684,7 @@ void tLuaCOMTypeHandler::lua2com(lua_State* L, stkIndex luaval, VARIANTARG& varg
     TYPECONV_ERROR("No Lua value to convert.");
     break;
   }
+  LUASTACK_DOCLEAN(L, 0);
 }
 
 /**
@@ -1360,10 +1360,18 @@ stkIndex tLuaCOMTypeHandler::get_from_array(lua_State* L,
 
   HRESULT hr = SafeArrayGetElement(safearray, indices, pv);
 
-  if(FAILED(hr))
+  if(FAILED(hr)) {
+    if (vt != VT_VARIANT) {
+      VariantClear(&varg);
+    }
     LUACOM_EXCEPTION(INTERNAL_ERROR);
+  }
 
   com2lua(L, varg);
+
+  if (vt != VT_VARIANT) {
+    VariantClear(&varg);
+  }
 
   return lua_gettop(L);
 }
@@ -1420,11 +1428,7 @@ void tLuaCOMTypeHandler::safearray_lua2com(lua_State* L,
     {
       string2safearray(
         lua_tostring(L, luaval),
-#if defined(NLUA51)
-        lua_rawlen(L, luaval),		// For > Lua 5.1
-#else
         lua_strlen(L, luaval),
-#endif
         varg
         );
       return;
@@ -1462,7 +1466,7 @@ void tLuaCOMTypeHandler::safearray_lua2com(lua_State* L,
   // initialize dimensions
   for(i = 0; i < dimensions; i++)
   {
-    bounds[dimensions - i - 1].lLbound = 1;
+    bounds[dimensions - i - 1].lLbound = 0;
     bounds[dimensions - i - 1].cElements = luavector.get_Nth_Dimension(dimensions - i);
   }
 
@@ -1482,7 +1486,7 @@ void tLuaCOMTypeHandler::safearray_lua2com(lua_State* L,
     for(i = 0; i < dimensions; i++)
       indices[i] = bounds[i].lLbound;
 
-    unsigned long dimension = indices[0] - 1;
+    unsigned long dimension = indices[0];
     // copy elements one-by-one
     do
     {
@@ -1660,7 +1664,13 @@ void tLuaCOMTypeHandler::safearray_com2lua(lua_State* L, VARIANTARG & varg)
       indices[i] = bounds[i].lLbound;
 
     // gets array data type
-    VARTYPE vt = varg.vt & ~VT_ARRAY;
+    VARTYPE vt;
+    HRESULT hr = SafeArrayGetVartype(safearray, &vt);
+    if (FAILED(hr)) {
+      delete[] bounds;
+      delete[] indices;
+      LUACOM_EXCEPTION(INTERNAL_ERROR);
+    }
 
     // holds index to Lua objects
     stkIndex luaval = 0;

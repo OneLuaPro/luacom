@@ -34,6 +34,7 @@ extern "C"
 {
 #endif
 #include <lua.h>
+#include <lauxlib.h>
 #ifdef __cplusplus
 }
 #endif
@@ -41,7 +42,24 @@ extern "C"
 #define lua_boxpointer(L,u) \
     (*(void **)(lua_newuserdata(L, sizeof(void *))) = (u)) 
 
-#define luaL_register(L, n, f) luaL_newlib(L, f); lua_pushvalue(L, -1); lua_setglobal(L, n)
+#if LUA_VERSION_NUM >= 502 /* Lua >= 5.2 */
+
+#ifndef lua_objlen
+#  define lua_objlen lua_rawlen
+#endif
+
+#ifndef lua_strlen
+#  define lua_strlen lua_rawlen
+#endif
+
+#ifndef lua_equal
+#  define lua_equal(L,idx1,idx2) lua_compare(L,(idx1),(idx2),LUA_OPEQ)
+#endif
+
+#ifndef luaL_register
+void luaL_register (lua_State *L, const char *libname, const luaL_Reg *l);
+#endif
+
+#endif
 
 #endif /* __LUACOMPAT_H */
-

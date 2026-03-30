@@ -11,13 +11,21 @@ LUACOM_VERSION=1.4
 # Installation paths.
 # You may need to modify these.
 # ---------------------------------------------------------------------------
-LUA_SUFFIX=5.1        # suffix for binaries (e.g. 5.1 => lua5.1.exe)
-LUA_INC = ..\lua5.1\include
-LUA_LIBDLL = ..\lua5.1\lib
-LUA_LIB = ..\lua5.1\lib\static
-LUA = ..\lua5.1\bin\lua$(LUA_SUFFIX).exe
-LUAC = $(LUA) mak\luac.lua
-BIN2C = $(LUA) mak\bin2c.lua
+
+# suffix for binaries (e.g. 5.1 => lua5.1.exe)
+LUA_SUFFIX      = 5.1
+LUA_BASE_DIR    = ..\lua$(LUA_SUFFIX)
+LUA_INTERPRETER = lua$(LUA_SUFFIX).exe
+
+#this variables set by rockspec
+LUALIB          = lua$(LUA_SUFFIX).lib
+LUA_LIBDIR      = $(LUA_BASE_DIR)\lib
+LUA_BINDIR      = $(LUA_BASE_DIR)\bin
+LUA_INCDIR      = $(LUA_BASE_DIR)\include
+LUA             = $(LUA_BINDIR)\$(LUA_INTERPRETER)
+
+LUAC            = $(LUA) mak\luac.lua
+BIN2C           = $(LUA) mak\bin2c.lua
 
 # ---------------------------------------------------------------------------
 # Local source directories.
@@ -37,9 +45,9 @@ SRC_DLL_DIR = .\src\dll
 # ---------------------------------------------------------------------------
 CC = cl
 
-INCS = -I$(LUA_INC) -I$(INC_DIR) -I$(SRC_LIB_DIR)
+INCS = -I$(LUA_INCDIR) -I$(INC_DIR) -I$(SRC_LIB_DIR)
 
-CFLAGS = $(INCS) -DWIN32 -D_CRT_SECURE_NO_DEPRECATE -nologo
+CFLAGS = -DWIN32 -D_CRT_SECURE_NO_DEPRECATE -nologo
 # If you want debugging information, define DEBUG in your environment
 !IFDEF DEBUG
 CFLAGS =$(CFLAGS) -MDd -Zi -Od -DLUA_USE_APICHECK
@@ -47,7 +55,9 @@ CFLAGS =$(CFLAGS) -MDd -Zi -Od -DLUA_USE_APICHECK
 CFLAGS =$(CFLAGS) -MD -Zi -O2 -DNDEBUG
 !ENDIF
 
-CPPFLAGS = /EHsc $(CFLAGS)
+CPPFLAGS = /EHsc $(CFLAGS) $(INCS)
+
+LUA_LIBS = $(LUA_LIBDIR)/$(LUALIB)
 
 .SUFFIXES:
 .SUFFIXES: .c .cpp .obj .lua .loh
@@ -59,17 +69,11 @@ DEFAULT_LIBS = \
 	kernel32.lib user32.lib gdi32.lib shell32.lib advapi32.lib \
 	ole32.lib winspool.lib uuid.lib oleaut32.lib shlwapi.lib htmlhelp.lib
 
-LFLAGS = /nologo /subsystem:console /incremental:no /machine:I386 /debug \
-	$(DEFAULT_LIBS) 
-
 !IFDEF DEBUG
 LINK_USE_DEBUG = /DEBUG /PDB:NONE
 !ENDIF
 
-# static link
-LUA_LIBS = $(LUA_LIB)/lua$(LUA_SUFFIX).lib
-# dynamic link
-LUA_LIBSDLL = $(LUA_LIBDLL)/lua$(LUA_SUFFIX).lib 
+LIBFLAG = /nologo /subsystem:console /incremental:no /dll
 
 # ---------------------------------------------------------------------------
 # Target options
@@ -104,7 +108,9 @@ LIB_OBJS = \
 DLL_OBJS = $(OBJ_DIR)/luacom_dll.obj
 
 all: lc_lib lc_dll
+
 lc_lib: $(LIB_DIR) $(OBJ_DIR) $(LC_LIB)
+
 lc_dll: lc_lib $(BIN_DIR) $(OBJ_DIR) $(LC_DLL)
 
 $(LIB_DIR)::
@@ -134,6 +140,7 @@ clean:
 	if exist $(BIN_DIR)\*.manifest del $(BIN_DIR)\*.manifest
 	if exist $(BIN_DIR)\*.pdb      del $(BIN_DIR)\*.pdb
 	if exist $(BIN_DIR)            rmdir $(BIN_DIR)
+	if exist $(SRC_LIB_DIR)\luacom5.lo  del $(SRC_LIB_DIR)\luacom5.lo
 	if exist $(SRC_LIB_DIR)\luacom5.loh del $(SRC_LIB_DIR)\luacom5.loh
 
 {$(SRC_LIB_DIR)}.cpp{$(OBJ_DIR)}.obj:
@@ -150,13 +157,14 @@ clean:
 
 {$(SRC_LIB_DIR)}.lua{$(SRC_LIB_DIR)}.loh:
 	$(LUAC) -o "$*.lo" "$<"
-	$(BIN2C) "$*.lo" > "$@"	
+	$(BIN2C) "$*.lo" > "$@"
 
 $(LC_LIB): $(LIB_OBJS)
 	lib /NOLOGO /OUT:$@ $(LIB_OBJS)
 
 $(LC_DLL): $(LIB_OBJS) $(DLL_OBJS) $(DEF)
-	link /DLL /IMPLIB:$(LC_IMPLIB) /out:$@ /DEF:$(DEF) $(LIB_OBJS) \
-	     $(DLL_OBJS) $(LFLAGS) $(LUA_LIBSDLL)
+	link $(LIBFLAG) $(LINK_USE_DEBUG) \
+	/IMPLIB:$(LC_IMPLIB) /out:$@ /DEF:$(DEF) \
+	$(LIB_OBJS) $(DLL_OBJS) $(LUA_LIBS) $(DEFAULT_LIBS)
 
 include ./mak/dependences.mak
