@@ -306,7 +306,7 @@ void tUtil::ShowHelp(const char *filename, unsigned long context)
     char context_param[50];
   
     if(context != 0)
-      sprintf(context_param, "-mapid %d", context);
+      sprintf(context_param, "-mapid %lu", context);
     else
       context_param[0] = '\0';
     _spawnlp(_P_NOWAIT, "hh.exe", "hh.exe", context_param, filename, NULL);

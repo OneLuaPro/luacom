@@ -218,13 +218,13 @@ STDMETHODIMP tLuaControl::QueryInterface(REFIID riid, void** ppv)
     return ResultFromScode(E_NOINTERFACE);
 }
 
-STDMETHODIMP_(ULONG) tLuaControl::AddRef()
+STDMETHODIMP_(ULONG) tLuaControl::AddRef() throw()
 {
   return ++m_refs;
 }
 
 
-STDMETHODIMP_(ULONG) tLuaControl::Release()
+STDMETHODIMP_(ULONG) tLuaControl::Release() throw()
 {
   assert(m_refs > 0);
   if(--m_refs == 0)

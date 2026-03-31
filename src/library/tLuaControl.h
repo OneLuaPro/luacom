@@ -28,8 +28,12 @@ public:
     // IUnknown methods.
 
     STDMETHOD(QueryInterface)(REFIID riid, void** ppvObj);
-    STDMETHODIMP_(ULONG) AddRef();
-    STDMETHODIMP_(ULONG) Release();
+    // Use STDMETHODCALLTYPE and ensure the exception specification matches the base class.
+    // This usually requires the throw() specifier for COM implementations in older SDKs.
+    //STDMETHODIMP_(ULONG) AddRef();
+    //STDMETHODIMP_(ULONG) Release();
+    virtual STDMETHODIMP_(ULONG) STDMETHODCALLTYPE AddRef() throw() override;
+    virtual STDMETHODIMP_(ULONG) STDMETHODCALLTYPE Release() throw() override;
 
     // IPersist methods.
 
