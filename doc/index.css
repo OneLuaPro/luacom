@@ -1,0 +1,71 @@
+/* ul { */
+/* 	list-style-type: none ; */
+/* } */
+
+/* /\* Restore bullets for standard lists, but keep them off for TOC/Index if needed *\/ */
+/* ul { */
+/*     list-style-type: disc !important; */
+/*     margin-left: 2em; */
+/*     padding-left: 0; */
+/* } */
+
+/* /\* Keep the navigation/index clean, target only those *\/ */
+/* .contents ul, .index ul { */
+/*     list-style-type: none !important; */
+/* } */
+
+/* ul.contents { */
+/* 	padding: 0 ; */
+/* } */
+
+
+
+
+/* 1. Global: Show bullets for all standard lists (like itemize) */
+ul {
+    list-style-type: disc !important;
+    margin-left: 2em;
+    padding-left: 0;
+}
+
+/* 2. Specific: Remove bullets from the Table of Contents */
+/* Pandoc uses id="TOC" for the navigation block */
+#TOC ul {
+    list-style-type: none !important;
+    margin-left: 2em;
+    padding-left: 0;
+}
+#TOC > ul {
+    margin-left: 0;
+}
+/* Increase vertical spacing between TOC items */
+#TOC li, .contents li, .index li, .toc li {
+    margin-top: 0.2em;    /* Small space above each item */
+    margin-bottom: 0.2em; /* Small space below each item */
+}
+
+/* Optional: More space specifically for top-level chapters */
+#TOC > ul > li {
+    margin-top: 0.6em;    /* Bigger gap between main chapters */
+}
+
+/* Also target the classes you previously used if they appear in your HTML */
+.contents ul, .index ul, .toc ul {
+    list-style-type: none !important;
+    margin-left: 2em;
+    padding-left: 0;
+}
+
+table {
+	border: none ;
+	border-spacing: 0 ;
+	border-collapse: collapse ;
+}
+
+td {
+	vertical-align: top ;
+	padding: 0 ;
+	text-align: left ;
+	line-height: 1.25 ;
+	width: 15% ;
+}

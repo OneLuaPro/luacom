@@ -292,6 +292,7 @@ void tLuaVector::InitVectorFromDimensions(long * dimensions,
 
 void tLuaVector::InitVectorFromTable(lua_State* L, stkIndex table)
 {
+
   CHECKPRECOND(!initialized);
 
   stkIndex luaval = LUA_NOOBJECT;
@@ -319,9 +320,10 @@ void tLuaVector::InitVectorFromTable(lua_State* L, stkIndex table)
     // Itera em tabela ou userdata, criando LuaVectors recursivamente
     while(1)
     {
-      CHECKPRECOND((elem_type != UNKNOWN) &&
-         (length != 0 || elem_type == UNKNOWN));
-  
+      // Corrected logic to allow the first iteration where both are 0/UNKNOWN
+      CHECKPRECOND((elem_type == UNKNOWN && length == 0) ||
+		   (elem_type != UNKNOWN && length > 0));
+
       lua_pushvalue(L, table);
 
       lua_pushnumber(L, length + 1);
@@ -459,7 +461,6 @@ void tLuaVector::InitVectorFromTable(lua_State* L, stkIndex table)
     initialized = false;
     throw;
   }
-
   initialized = true;
 
   return;

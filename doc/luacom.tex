@@ -6,15 +6,41 @@
 \usepackage[english]{babel}
 \usepackage[pdfstartview=FitH,a4paper=true,pdfsubject="The LuaCOM Manual",pdfauthor="Vinicius Almendra and Renato Cerqueira and Fabio Mascarenhas",pdftitle="The LuaCOM Manual",colorlinks=true,citecolor=black,linkcolor=black,pagecolor=black,urlcolor=black]{hyperref}
 
+% --- Pandoc Switch Logic ---
+% Define a new conditional for Pandoc environments
+\newif\ifpandoc
+\pandocfalse % Default is false for standard LaTeX (PDF)
+
+% Check if the document is being processed by Pandoc
+% Pandoc defines \pandoc during parsing
+\ifdefined\pandoc
+\pandoctrue
+\fi
+
+% --- PDF-only PostScript commands ---
+\ifpandoc
+% Skip PostScript specials in HTML output to avoid "unexpected Tok" errors
+\else
 \special{!userdict begin /bop-hook{gsave 210 40 translate
 65 rotate /Times-Roman findfont 216 scalefont setfont
 0 0 moveto 0.97 setgray (DRAFT) show grestore}def }
+\fi
 
+% --- Conditional Macro Definitions ---
+\ifpandoc
+% Simplified macros for Pandoc to prevent table corruption in HTML
+\newcommand{\ttext}[1]{#1}
+\newcommand{\ttitle}[1]{#1}
+
+\newcommand{\tlineB}[2]{#1 & #2 \\ \hline}
+\newcommand{\tlinetitB}[2]{#1 & #2 \\ \hline \hline}
+\else
 \newcommand{\ttext}[1]{{\raggedright #1 \\}}
 \newcommand{\ttitle}[1]{\begin{minipage}{\colA cm} \centering \bf #1 \end{minipage}}
 
 \newcommand{\tlineB}[2]{\ttext{#1} & \ttext{#2} \\ \hline}
 \newcommand{\tlinetitB}[2]{\ttitle{#1} & \ttitle{#2} \\ \hline \hline}
+\fi
 
 \newcommand{\ident}[1]{\mbox{\texttt{#1}}}
 %\newcommand{\ident}[1]{\texttt{#1}}
@@ -35,14 +61,68 @@
 \newcommand{\registered}{$^{\textregistered}$}
 
 
+\ifpandoc
+\title{\luacom  \ v1.4.1 User Manual}
+\else
 \title{\luacom \ User Manual \\
-{\small (Version 1.4)}}
+{\small (Version 1.4.1)}}
+\fi
 
-\author{Vinicius Almendra \and Renato Cerqueira \and Fabio Mascarenhas}
+\author{Vinicius Almendra \and Renato Cerqueira \and Fabio Mascarenhas \and
+  The OneLuaPro Project Authors}
 
 \begin{document}
 
 \maketitle
+
+\chapter*{Preface: Note on Code Examples and Modern Windows Compatibility}
+
+Please note that the code examples provided in this documentation
+(such as the \textit{Microsoft Calendar Control}
+\texttt{MSCAL.Calendar} or the \textit{Internet Transfer Control}
+\texttt{InetCtls.Inet}) reflect a historical state of Windows
+development. These ActiveX components (\texttt{.ocx} files) were
+standard in the late 1990s and early 2000s but are \textbf{no longer
+  included} by default in modern operating systems such as
+\textbf{Windows 7, 10, and 11}.
+
+\section*{Architecture Incompatibility (32-bit vs. 64-bit)}
+A critical hurdle for these legacy examples is the CPU
+architecture. Most historical ActiveX controls are strictly
+\textbf{32-bit (x86)} components. If you are running a \textbf{64-bit
+  version of the Lua interpreter}, it cannot load these 32-bit COM
+objects, even if the \texttt{.ocx} files are present and registered on
+your system. To use such legacy controls, a 32-bit Lua environment is
+required.
+
+\section*{Use of Examples}
+These examples are intended primarily to demonstrate the
+\textbf{LuaCOM syntax} and its core mechanics, specifically:
+\begin{itemize}
+\item The distinction between method calls using the colon operator
+  (\texttt{:}) and property access using the dot operator
+  (\texttt{.}).
+\item The implementation of COM interfaces and event handling within
+  Lua.
+\item The use of \texttt{get}/\texttt{set} prefixes for property
+  accessors.
+\end{itemize}
+
+\section*{Modern Alternatives}
+For productive applications, it is strongly recommended to use current
+alternatives that are natively available or 64-bit compatible:
+\begin{itemize}
+\item Instead of \texttt{InetCtls.Inet}, use the native
+  \textbf{\texttt{WinHttp.WinHttpRequest.5.1}} object or libraries
+  like \textit{LuaCurl}.
+\item Instead of \texttt{MSCAL.Calendar}, use Lua's built-in
+  \texttt{os.date} and \texttt{os.time} functions or modern UI
+  frameworks.
+\end{itemize}
+
+The underlying logic and API of LuaCOM remain valid and function as
+described, even if the specific objects used in the examples are no
+longer available or compatible with your current system architecture.
 
 \tableofcontents
 
@@ -102,7 +182,7 @@ using \luacom, the first step is to read all the chapter
 documented. There can be found references to other sections of the
 manual, where more detailed information is provided.
 
-\paragraph{Newbies} For those who are newcomers, we provide a tutorial
+\subsection{Newbies} For those who are newcomers, we provide a tutorial
 section (chapter \ref{cap:tutorial}) with a step-by-step guide to
 start using \luacom. More help and samples can be found in \luacom's
 home page and in the demos folder. Notice that VBScript code can be
@@ -113,13 +193,13 @@ deeper technical information about \luacom\ or who are willing to
 modify it for some reason. For this kind of information, please
 contact the authors.
 
-\paragraph{Knowledge required} This manual presumes some knowledge of
+\subsection{Knowledge required} This manual presumes some knowledge of
 \com\ and Automation. We don't intend to explain in detail how these
 technologies work or how they can be used to solve particular
 problems. This information can be found easily in the web or in good
 books.
 
-\section*{Some information about samples} The sample codes shown in
+\subsection{Some information about samples} The sample codes shown in
 this documentation are all for Lua 5.1. Samples for previous Lua versions
 can be found in the documentation for the previous versions of \luacom.
 
@@ -1270,7 +1350,7 @@ exception handling inside \luacom\ code.
 \label{sect:type_conv}
 
 %TODO: passar tudo o que for comportamento diferente do VB ou que
-%possa confundir para a seção release information
+%possa confundir para a seÃ§Ã£o release information
 
 \luacom\ is responsible for converting values from \com\ to \lua\ and
 vice versa. Most of the types can be mapped from COM to Lua and vice
@@ -2051,6 +2131,10 @@ This way the client may call methods of the COM object using the
 
 \section{History}
 
+\begin{itemize}
+\item This \luacom\ version formally supports Lua 5.5.
+\end{itemize}
+
 \subsection*{Version 1.4}
 
 \begin{itemize}
@@ -2597,10 +2681,18 @@ luacom\_obj  & \luacom\ object\newline nil \\ \hline
 \subsubsection*{Sample}
 
 \begin{verbatim}
+-- outdated code, requires ActiveX-Controls like MSINET.OCX
 inet_obj = luacom.CreateObject("InetCtls.Inet")
 if inet_obj == nil then
   print("Error! Object could not be created!")
 end
+
+-- new code for Windows 10 and above
+local luacom = require("luacom")
+local http = luacom.CreateObject("WinHttp.WinHttpRequest.5.1")
+http:Open("GET", "https://google.com", false)
+http:Send()
+print(http.ResponseText)
 \end{verbatim}
 
 

@@ -1,8 +1,7 @@
 -- LuaCOM test suite.
 
-require "luacom"
+local luacom = require("luacom")
 assert(luacom)
-local luacom = luacom
 
 local skipped = false  -- whether tests were skipped
 
@@ -15,7 +14,9 @@ end
 
 local teste_progid = "LuaCOM.Test"
 
-luacom.StartLog("luacom.log")
+local log_file = (os.getenv("TMP") or os.getenv("TEMP")) .. "\\luacom.log"
+print("See also luacom log at "..log_file)
+luacom.StartLog(log_file)
 luacom.abort_on_API_error = true
 
 -- Tests whether file exists (and is readable).
@@ -185,23 +186,28 @@ local function asserteq(a, b)
 end
 
 -- Converts table to string.  Supports nested tables.
-local function table2string(table)
-  if type(table) ~= "table" then
-    return tostring(table)
+local function table2string(t)
+  -- Normalization of numbers (Integer vs Double Fix)
+  if type(t) == "number" then
+    if t == math.floor(t) then
+      return tostring(math.floor(t))
+    end
+    return tostring(t)
   end
 
-  local i, v = next(table, nil)
-  local s = "{"
-  local first = 1
-  for i,v in pairs(table) do
-    if first ~= 1 then
-      s = s..", "            
-    else
-      first = 0
-    end
-    s = s..table2string(v)
+  if type(t) ~= "table" then
+    return tostring(t)
   end
-  s = s.."}"
+
+  -- Sequential iteration instead of pairs() (Order Fix)
+  local s = "{"
+  for i = 1, #t do
+    if i > 1 then
+      s = s .. ", "
+    end
+    s = s .. table2string(t[i])
+  end
+  s = s .. "}"
 
   return s
 end
@@ -354,13 +360,14 @@ local function test_stress()
       iface, "InternetExplorer.Application", "DWebBrowserEvents")
   assert(obj)
 
-  iface_ok = 1
-  for i=1,100000 do
+  iface_ok = 0
+  local count = 100000
+  for i=1, count do
     obj:BeforeNavigate()
   end
 
   nt()
-  assert(i == iface_ok)
+  assert(count == iface_ok)
   obj = nil
   collectgarbage()
 end
@@ -1241,9 +1248,7 @@ test_connection_points()
 
 test_safearrays()
 
-if false then
 test_stress()
-end
 
 if not SKIP_REGISTER then test_NewObject() end
 test_DataTypes()

@@ -1,0 +1,40 @@
+h3 code {
+	font-family: inherit ;
+	font-size: inherit ;
+}
+
+/* pre, code { */
+/* 	font-size: 12pt ; */
+/* } */
+
+span.apii {
+	color: gray ;
+	float: right ;
+	font-family: inherit ;
+	font-style: normal ;
+	font-size: small ;
+}
+
+h2:before {
+	content: "" ;
+	padding-right: 0em ;
+}
+
+/* Styling for Verbatim (Code) blocks */
+pre {
+    text-indent: 0;
+    background-color: #f8f8f8; /* Light gray background like lua.org */
+    padding: 12px;             /* Space between code and border */
+    border: 1px solid #eeeeee; /* Subtle border */
+    border-radius: 5px;        /* Slightly rounded corners */
+    margin: 15px 0;            /* Space above and below the block */
+    overflow-x: auto;          /* Scrollbar for long lines */
+    line-height: 1.3;          /* Slightly wider line spacing */
+}
+
+/* Optional: Inline Verbatim (\verb) */
+code {
+    background-color: #f4f4f4; /* Slightly darker gray for inline code */
+    padding: 2px 4px;          /* Small padding around the word */
+    border-radius: 3px;
+}
