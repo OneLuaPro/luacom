@@ -23,7 +23,7 @@ print("GetNetworkInterface")
    end
   item = nil
   collectgarbage ()
-  print("memory: " .. gcinfo())
+  print("memory: " .. collectgarbage("count"))
   return BpsSent,BpsRec,BpsTot,bpsBandwidth or 0,0,0,0
 end
 

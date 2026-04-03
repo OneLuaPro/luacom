@@ -294,9 +294,10 @@ a new instance of it or to get a running instance. To do so, the
 easiest way is to use the method CreateObject of the Lua API:
 
 \begin{verbatim}
-  word = luacom.CreateObject("Word.Application")
-  assert(word)
-  word.Visible = true
+luacom = require("luacom")
+word = luacom.CreateObject("Word.Application")
+assert(word)
+word.Visible = true
 \end{verbatim}
 
 If there is an already running instance of the object you want,
@@ -304,13 +305,12 @@ If there is an already running instance of the object you want,
 illustrates this:
 
 \begin{verbatim}
-  -- If there is an instance of Word(r) running,
-  -- it will end it
-  word = luacom.GetObject("Word.Application")
-  if word then
-    word:Quit()
-    word = nil
-  end
+-- If there is an instance of Word(r) running, it will end it
+word = luacom.GetObject("Word.Application")
+if word then
+  word:Quit()
+  word = nil
+end
 \end{verbatim}
 
 \section{Getting Help about an Object}
@@ -324,9 +324,9 @@ has an associated help file, \luacom\ can launch it using the method
 \ident{ShowHelp}:
 
 \begin{verbatim}
-  word = luacom.CreateObject("Word.Application")
-  assert(word)
-  luacom.ShowHelp(word)
+word = luacom.CreateObject("Word.Application")
+assert(word)
+luacom.ShowHelp(word)
 \end{verbatim}
 
 If the object has an associated type library, \luacom\ can generate

@@ -21,20 +21,36 @@ h2:before {
 }
 
 /* Styling for Verbatim (Code) blocks */
+/* Block container for code snippets */
 pre {
+    background-color: #f4f4f4;
+    padding: 10px;           /* Uniform inner spacing */
+    margin: 1em 0;           /* Vertical spacing between paragraphs */
+    border-radius: 5px;
+    border: 1px solid #ddd;
+    overflow-x: auto;        /* Adds horizontal scrollbar if line is too long */
+    /* Resets any inherited paragraph indentation */
     text-indent: 0;
-    background-color: #f8f8f8; /* Light gray background like lua.org */
-    padding: 12px;             /* Space between code and border */
-    border: 1px solid #eeeeee; /* Subtle border */
-    border-radius: 5px;        /* Slightly rounded corners */
-    margin: 15px 0;            /* Space above and below the block */
-    overflow-x: auto;          /* Scrollbar for long lines */
-    line-height: 1.3;          /* Slightly wider line spacing */
 }
 
-/* Optional: Inline Verbatim (\verb) */
-code {
-    background-color: #f4f4f4; /* Slightly darker gray for inline code */
-    padding: 2px 4px;          /* Small padding around the word */
+/* Code text within the block */
+pre code {
+    background-color: transparent; /* Prevents double background colors */
+    padding: 0;
+    display: block;
+    text-indent: 0;          /* Explicitly ensures the first line is not indented */
+    white-space: pre-wrap;   /* Preserves formatting but wraps if space is tight */
+    word-break: normal;
+    font-family: monospace;
+    text-align: left;        /* Prevents inherited justification (block-set) */
+}
+
+/* Inline code within text flow (e.g., `GetObject`) */
+p > code {
+    background-color: #f4f4f4;
+    padding: 2px 4px;
     border-radius: 3px;
+    font-family: monospace;
+    /* Ensures inline code doesn't break the line height */
+    vertical-align: middle;
 }

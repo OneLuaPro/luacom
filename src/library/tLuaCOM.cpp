@@ -34,6 +34,7 @@ tLuaCOM::tLuaCOM(lua_State* L,
   clsid                   = IID_NULL;
   lock_count              = 0;
   conn_point              = NULL;
+  objName                 = NULL;
 
   pdisp.Attach(pdisp_arg);
   pdisp->AddRef(); 
@@ -125,8 +126,14 @@ tLuaCOM::~tLuaCOM()
 
       counter++;
     }
+
   }
 
+  if (objName) {
+    free(objName);
+    objName = NULL;
+  }
+ 
   if( typehandler) {
 	delete typehandler;
     typehandler = NULL;
@@ -648,7 +655,8 @@ tLuaCOM * tLuaCOM::CreateLuaCOM(lua_State* L,
                                 IDispatch * pdisp,
                                 const CLSID& coclass,
                                 ITypeInfo* typeinfo,
-                                bool untyped
+                                bool untyped,
+				const char* name
                                 )
 {
   HRESULT hr = S_OK;
@@ -667,6 +675,10 @@ tLuaCOM * tLuaCOM::CreateLuaCOM(lua_State* L,
   tLuaCOM *lcom = 
     new tLuaCOM(L, pdisp, typeinfo, coclass);
 
+  if (name) {
+    lcom->objName = _strdup(name);
+  }
+  
   COM_RELEASE(typeinfo);
 
   // We have one reference (the pointer), so we lock the object

@@ -1,7 +1,7 @@
 #ifndef LUACOM_H
 #define LUACOM_H
 
-#define LUACOM_VERSION   "LuaCOM 1.3b 2005-01-06"
+#define LUACOM_VERSION   "LuaCOM 1.4.1"
 #define LUACOM_COPYRIGHT "Copyright (C) 1998-2005 Tecgraf, PUC-Rio"
 #define LUACOM_AUTHORS   "V. Almendra & R. Cerqueira & F. Mascarenhas"
 

@@ -1,6 +1,8 @@
-# LuaCOM (OneLuaPro Edition)
+# LuaCOM
 
-This repository is a **consolidated super-fork** of the original [davidm/luacom](https://github.com/davidm/luacom). It merges the most critical advancements, bug fixes, and modernizations from across the entire GitHub fork ecosystem into a single, definitive codebase compatible with modern Lua environments.
+This repository is a **consolidated fork** of the original [davidm/luacom](https://github.com/davidm/luacom). It merges the most critical advancements, bug fixes, and modernizations from across the entire GitHub fork ecosystem into a single, definitive codebase compatible with modern Lua environments.
+
+Beyond consolidation, the **Extended Lua API** has been reactivated by carefully porting the original codebase in `src/library/luacom5.lua` to the modern **Lua 5.5** standard. To ensure reliability, the internal test bench (`src/test/luacom_tests5.lua`) has been slightly modernized and restored to a passing state, although some tests remain inactive or not implemented. Additionally, the (legacy) **HTML Help interface** has been re-enabled for better documentation integration on Windows, and a standardized version string has been introduced via `luacom._VERSION` for easier version tracking.
 
 ## Consolidation Overview
 
@@ -18,13 +20,14 @@ The following "ahead" branches have been merged into this master:
 
 ## Key Features & Improvements
 
--   **Broad Compatibility:** Support for Lua 5.1, 5.2, 5.3, and 5.4.
+-   **Broad Compatibility:** Support for Lua 5.1, 5.2, 5.3, 5.4 and 5.5.
 -   **64-Bit Support:** Proper handling of 64-bit integers and modern Windows architectures.
 -   **Memory Safety:** Fixed several severe memory leaks in SAFEARRAY decoding and Connection Points.
 -   **Smart Pointers:** Internal refactoring to use `tCOMPtr` (Smart Pointers) for more robust COM reference counting.
 -   **Modern Build Systems:**
     -   **xmake:** Native support via `xmake.lua`.
-    -   **CMake/LuaRocks:** Updated rockspecs for modern deployment.
+    -   **CMake/LuaRocks:** Slightly updated `CMakeLists.txt` for modern deployment.
+    -   **CMake/OneLuaPro:** Separate build environment in `build`
 -   **New Methods:** Added `luacom.ReleaseComObject(obj)` for manual reference control when dealing with non-standard COM servers.
 -   **Unicode/Codepage:** Improved UTF-8 and ANSI codepage handling.
 

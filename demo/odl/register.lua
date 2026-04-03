@@ -63,7 +63,7 @@ function obj:I2A(i1)
 end
 
 function obj:IntDivide(i1, i2)
-  return math.floor(i1/i2),math.mod(i1, i2)
+  return math.floor(i1/i2),math.fmod(i1, i2)
 end
 
 com_obj = luacom.ImplInterfaceFromTypelib(obj,"testlua.tlb","ITestLuaCOM")

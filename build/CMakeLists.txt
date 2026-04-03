@@ -1,4 +1,31 @@
 # ------------------------------------------------------------------------------
+# MIT License
+#
+# Copyright (C) 1998-2005 Tecgraf, PUC-Rio
+# Copyright (C) 2005-2021 LuaCOM contributors
+# Copyright (C) 2026      The OneLuaPro project authors
+#
+# Original Authors: V. Almendra, R. Cerqueira, F. Mascarenhas, and others.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in 
+# the Software without restriction, including without limitation the rights to 
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+# the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all 
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# ------------------------------------------------------------------------------
 # General definitions
 cmake_minimum_required(VERSION 3.31 FATAL_ERROR)
 
@@ -55,6 +82,27 @@ set(INSTALL_TOP_LDIR
   ${INSTALL_DATAROOTDIR}/lua/${liblua_VERSION_MAJOR}.${liblua_VERSION_MINOR})
 
 # ------------------------------------------------------------------------------
+find_path(HTMLHELP_INC_DIR HtmlHelp.h
+  PATH_SUFFIXES "um"
+)
+if(HTMLHELP_INC_DIR)
+  set(CMAKE_REQUIRED_INCLUDES "${HTMLHELP_INC_DIR}")
+  set(CMAKE_REQUIRED_LIBRARIES htmlhelp)
+  check_c_source_compiles ("
+#include <windows.h>
+#include <htmlhelp.h>
+int main(){
+HtmlHelp(NULL, NULL, HH_HELP_CONTEXT, 0);
+return 0;
+}
+" HAVE_HTMLHELP)
+  set(CMAKE_REQUIRED_INCLUDES)
+  set(CMAKE_REQUIRED_LIBRARIES)
+else()
+  message(STATUS "HtmlHelp.h not found.")
+  set(HAVE_HTMLHELP FALSE)
+endif()
+
 # _stricmp (is there a simpler way of doing this?)
 check_symbol_exists( _stricmp string.h HAVE__STRICMP)
 if(HAVE__STRICMP)
@@ -83,7 +131,26 @@ add_library(luacom SHARED)
 target_include_directories(luacom PRIVATE
   ${LIBLUA_INCLUDEDIR} ../src/library ../src/dll ../include
 )
-# plattform-independend sources
+
+# Define absolute paths for the input Lua script and the generated loh-file
+set(LUACOM5_INPUT_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../src/library/luacom5.lua")
+set(LUACOM5_BYTECODE_FILE "${CMAKE_CURRENT_BINARY_DIR}/generated/luacom.loh")
+
+# Define the generation rule: Converts the Lua script into a C-style hex array.
+# Ensure the loh-file is rebuilt if the Lua script or the converter script changes
+# VERBATIM ensures correct argument escaping for the Windows Shell/MSBuild
+add_custom_command(
+  OUTPUT "${LUACOM5_BYTECODE_FILE}"
+  COMMAND ${CMAKE_COMMAND} 
+  -DINPUT_FILE=${LUACOM5_INPUT_FILE}
+  -DOUTPUT_FILE=${LUACOM5_BYTECODE_FILE} 
+  -P "${CMAKE_CURRENT_SOURCE_DIR}/convert_lua_to_hex.cmake"
+  DEPENDS "${LUACOM5_INPUT_FILE}" "${CMAKE_CURRENT_SOURCE_DIR}/convert_lua_to_hex.cmake"
+  COMMENT "Converting luacom5.lua to luacom5.loh..."
+  VERBATIM
+)
+
+# luacom sources
 target_sources(luacom PRIVATE
   ../src/library/LuaAux.cpp ../src/library/luabeans.cpp ../src/library/luacom.cpp
   ../src/library/tLuaCOM.cpp ../src/library/tLuaCOMException.cpp
@@ -94,24 +161,35 @@ target_sources(luacom PRIVATE
   ../src/library/LuaCompat.cpp ../src/library/tLuaCOMEnumerator.cpp
   ../src/library/tLuaObject.cpp ../src/library/tLuaControl.cpp ../src/library/tLuaTLB.cpp
   ../src/dll/luacom_dll.cpp ../src/dll/luacom_dll.def
+  ${LUACOM5_BYTECODE_FILE}
 )
-# setup platform-specific sources, compile and linker options
-if(WIN32 AND NOT MinGW)
-  # Important definitions for DLL and symbol export
-  target_compile_definitions(luacom PRIVATE
-    NO_HTMLHELP _stricmp=${STRICMP}
-    LUACOM_DLL="luacom.dll"
-    luacom_EXPORTS
-    _WINDLL _WIN32 _CRT_SECURE_NO_WARNINGS
-  )
-  # We silently assume all libs are available with headers and static lib
-  target_link_directories(luacom PRIVATE ${LIBLUA_LIBDIR})
-  target_link_libraries(luacom PRIVATE
-    liblua gdi32 shell32 advapi32 ole32 winspool uuid oleaut32 shlwapi
-  )
-else()
-  message(FATAL_ERROR "Not yet fully implemented.")
-endif()
+
+# Mark luacom5.loh as generated so CMake doesn't look for it during the initial configuration
+set_source_files_properties("${LUACOM5_BYTECODE_FILE}" PROPERTIES GENERATED TRUE)
+
+# Crucial for MSVC/MSBuild: Tells the compiler that luacom.cpp MUST be recompiled 
+# whenever luacom5.loh is updated. This bridges the gap between the custom command and
+# the C++ build.
+set_source_files_properties(luacom.cpp PROPERTIES OBJECT_DEPENDS "${LUACOM5_BYTECODE_FILE}")
+
+# Finally add path to generated file to include path list
+target_include_directories(luacom PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+
+# setup compile and linker options
+# Important definitions for DLL and symbol export
+target_compile_definitions(luacom PRIVATE
+  _stricmp=${STRICMP}
+  $<$<NOT:$<BOOL:${HAVE_HTMLHELP}>>:NO_HTMLHELP>
+  LUACOM_DLL="luacom.dll"
+  luacom_EXPORTS
+  _WINDLL _WIN32 _CRT_SECURE_NO_WARNINGS
+)
+# We silently assume all libs are available with headers and static lib
+target_link_directories(luacom PRIVATE ${LIBLUA_LIBDIR})
+target_link_libraries(luacom PRIVATE
+  liblua gdi32 shell32 advapi32 ole32 winspool uuid oleaut32 shlwapi
+  $<$<BOOL:${HAVE_HTMLHELP}>:htmlhelp>
+)
 # Install
 install(TARGETS luacom RUNTIME DESTINATION ${INSTALL_TOP_CDIR})
 
@@ -135,6 +213,9 @@ if(PANDOC_EXECUTABLE)
     -o "${DOC_HTML_OUTPUT}"
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../doc"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/../doc/luacom.tex"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../doc/lua.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../doc/manual.css"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../doc/index.css"
     COMMENT "Converting luacom tex manual to HTML"
     VERBATIM
   )
