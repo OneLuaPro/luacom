@@ -330,6 +330,318 @@ void pushUnsignedInteger(lua_State* L, ULONGLONG value)
   pushUnsignedIntegerString(L, value, false);
 }
 
+// DECIMAL and CURRENCY values as exact text, independent of the locale.
+// A magnitude holds 96 bits, the most significant word first.
+const unsigned MAX_DECIMAL_SCALE = 28;
+const unsigned CURRENCY_SCALE = 4;
+
+// magnitude = magnitude * 10 + digit; false if 96 bits do not suffice
+bool multiplyMagnitudeAdd(ULONG magnitude[3], unsigned digit)
+{
+  ULONGLONG carry = digit;
+  for(int i = 2; i >= 0; i--)
+  {
+    const ULONGLONG part = static_cast<ULONGLONG>(magnitude[i]) * 10 + carry;
+    magnitude[i] = static_cast<ULONG>(part & 0xFFFFFFFFUL);
+    carry = part >> 32;
+  }
+  return carry == 0;
+}
+
+// magnitude = magnitude / 10; returns the remainder
+unsigned divideMagnitudeBy10(ULONG magnitude[3])
+{
+  ULONGLONG remainder = 0;
+  for(int i = 0; i < 3; i++)
+  {
+    const ULONGLONG part = (remainder << 32) | magnitude[i];
+    magnitude[i] = static_cast<ULONG>(part / 10);
+    remainder = part % 10;
+  }
+  return static_cast<unsigned>(remainder);
+}
+
+// Parses [+|-]digits[.digits] with at most max_scale decimals.
+bool parseScaledDecimal(const char* text, size_t length, unsigned max_scale,
+                        ULONG magnitude[3], bool* negative, unsigned* scale)
+{
+  if(!text || length == 0)
+    return false;
+
+  size_t i = 0;
+  *negative = false;
+  if(text[0] == '-' || text[0] == '+')
+  {
+    *negative = text[0] == '-';
+    i = 1;
+  }
+
+  magnitude[0] = magnitude[1] = magnitude[2] = 0;
+  size_t integer_digits = 0;
+  unsigned decimals = 0;
+  bool point = false;
+  for(; i < length; i++)
+  {
+    if(text[i] == '.' && !point && integer_digits > 0)
+    {
+      point = true;
+      continue;
+    }
+    if(text[i] < '0' || text[i] > '9')
+      return false;
+    if(point)
+    {
+      if(decimals == max_scale)
+        return false;
+      decimals++;
+    }
+    else
+      integer_digits++;
+    if(!multiplyMagnitudeAdd(magnitude, static_cast<unsigned>(text[i] - '0')))
+      return false;
+  }
+
+  if(integer_digits == 0 || (point && decimals == 0))
+    return false;
+  *scale = decimals;
+  return true;
+}
+
+// Writes magnitude / 10^scale as text; the buffer needs 32 characters.
+size_t formatScaledDecimal(const ULONG magnitude[3], bool negative,
+                           unsigned scale, char* text)
+{
+  ULONG rest[3] = {magnitude[0], magnitude[1], magnitude[2]};
+  char digits[32];
+  size_t count = 0;
+  bool zero = true;
+  do
+  {
+    const unsigned digit = divideMagnitudeBy10(rest);
+    zero = zero && digit == 0;
+    digits[count++] = static_cast<char>('0' + digit);
+  }
+  while(rest[0] != 0 || rest[1] != 0 || rest[2] != 0);
+
+  // one digit before the decimal point
+  while(count <= scale)
+    digits[count++] = '0';
+
+  size_t length = 0;
+  if(negative && !zero)
+    text[length++] = '-';
+  for(size_t i = count; i > 0; i--)
+  {
+    if(i == scale)
+      text[length++] = '.';
+    text[length++] = digits[i - 1];
+  }
+  return length;
+}
+
+void signedToMagnitude(LONGLONG value, ULONG magnitude[3], bool* negative)
+{
+  *negative = value < 0;
+  const ULONGLONG units = *negative
+    ? static_cast<ULONGLONG>(-(value + 1)) + 1
+    : static_cast<ULONGLONG>(value);
+  magnitude[0] = 0;
+  magnitude[1] = static_cast<ULONG>(units >> 32);
+  magnitude[2] = static_cast<ULONG>(units & 0xFFFFFFFFUL);
+}
+
+// Converts a magnitude of at most 64 bits to a signed value.
+bool magnitudeToSigned(const ULONG magnitude[3], bool negative,
+                       LONGLONG* value)
+{
+  if(magnitude[0] != 0)
+    return false;
+  const ULONGLONG units =
+    (static_cast<ULONGLONG>(magnitude[1]) << 32) | magnitude[2];
+  if(negative)
+  {
+    if(units > 9223372036854775808ULL)
+      return false;
+    *value = units == 9223372036854775808ULL
+      ? -9223372036854775807LL - 1
+      : -static_cast<LONGLONG>(units);
+  }
+  else
+  {
+    if(units > 9223372036854775807ULL)
+      return false;
+    *value = static_cast<LONGLONG>(units);
+  }
+  return true;
+}
+// Pushes a VT_DECIMAL or VT_CY value exactly, as text. With integers, a
+// DECIMAL of scale 0 becomes a Lua integer where it fits, as VT_I8 does.
+void pushExactDecimal(lua_State* L, const VARIANT& value, bool integers)
+{
+  ULONG magnitude[3];
+  bool negative = false;
+  unsigned scale = CURRENCY_SCALE;
+  if(value.vt == VT_CY)
+    signedToMagnitude(value.cyVal.int64, magnitude, &negative);
+  else
+  {
+    magnitude[0] = value.decVal.Hi32;
+    magnitude[1] = value.decVal.Mid32;
+    magnitude[2] = value.decVal.Lo32;
+    negative = (value.decVal.sign & DECIMAL_NEG) != 0;
+    scale = value.decVal.scale;
+    if(scale > MAX_DECIMAL_SCALE)
+      TYPECONV_ERROR("DECIMAL value with an invalid scale.");
+
+    LONGLONG integer = 0;
+    if(integers && scale == 0 &&
+       magnitudeToSigned(magnitude, negative, &integer))
+    {
+      pushSignedInteger(L, integer);
+      return;
+    }
+  }
+
+  char text[32];
+  const size_t length = formatScaledDecimal(magnitude, negative, scale, text);
+  lua_pushlstring(L, text, length);
+}
+
+void setDecimalVariant(VARIANTARG& varg, const ULONG magnitude[3],
+                       bool negative, unsigned scale)
+{
+  const bool zero = magnitude[0] == 0 && magnitude[1] == 0 &&
+                    magnitude[2] == 0;
+  varg.decVal.wReserved = 0;
+  varg.decVal.Hi32 = magnitude[0];
+  varg.decVal.Mid32 = magnitude[1];
+  varg.decVal.Lo32 = magnitude[2];
+  varg.decVal.scale = static_cast<BYTE>(scale);
+  varg.decVal.sign = negative && !zero ? DECIMAL_NEG : 0;
+  // wReserved shares its storage with vt, so vt is set last.
+  varg.vt = VT_DECIMAL;
+}
+
+// {Type="decimal"}: strings and Lua integers are converted exactly, other
+// numbers through a double.
+void luaValueToDecimal(lua_State* L, int index, VARIANTARG& varg)
+{
+  ULONG magnitude[3];
+  bool negative = false;
+  unsigned scale = 0;
+  if(lua_type(L, index) == LUA_TSTRING)
+  {
+    size_t length = 0;
+    const char* text = lua_tolstring(L, index, &length);
+    if(!parseScaledDecimal(text, length, MAX_DECIMAL_SCALE, magnitude,
+                           &negative, &scale))
+      TYPECONV_ERROR("decimal strings must contain one decimal number in range with at most 28 decimals.");
+    setDecimalVariant(varg, magnitude, negative, scale);
+    return;
+  }
+#if LUA_VERSION_NUM >= 503
+  if(lua_isinteger(L, index))
+  {
+    signedToMagnitude(static_cast<LONGLONG>(lua_tointeger(L, index)),
+                      magnitude, &negative);
+    setDecimalVariant(varg, magnitude, negative, 0);
+    return;
+  }
+#endif
+  varg.vt = VT_R8;
+  varg.dblVal = lua_tonumber(L, index);
+  HRESULT hr = VariantChangeType(&varg, &varg, 0, VT_DECIMAL);
+  CHK_COM_CODE(hr);
+}
+
+// {Type="currency"}: as decimal, with at most 4 decimals.
+void luaValueToCurrency(lua_State* L, int index, VARIANTARG& varg)
+{
+  LONGLONG units = 0;
+  if(lua_type(L, index) == LUA_TSTRING)
+  {
+    size_t length = 0;
+    const char* text = lua_tolstring(L, index, &length);
+    ULONG magnitude[3];
+    bool negative = false;
+    unsigned scale = 0;
+    bool valid = parseScaledDecimal(text, length, CURRENCY_SCALE, magnitude,
+                                    &negative, &scale);
+    for(; valid && scale < CURRENCY_SCALE; scale++)
+      valid = multiplyMagnitudeAdd(magnitude, 0);
+    if(!valid || !magnitudeToSigned(magnitude, negative, &units))
+      TYPECONV_ERROR("currency strings must contain one decimal number in range with at most 4 decimals.");
+    varg.vt = VT_CY;
+    varg.cyVal.int64 = units;
+    return;
+  }
+#if LUA_VERSION_NUM >= 503
+  if(lua_isinteger(L, index))
+  {
+    const lua_Integer value = lua_tointeger(L, index);
+    if(value < -922337203685477LL || value > 922337203685477LL)
+      TYPECONV_ERROR("currency values must be in range.");
+    varg.vt = VT_CY;
+    varg.cyVal.int64 = static_cast<LONGLONG>(value) * 10000;
+    return;
+  }
+#endif
+  varg.vt = VT_R8;
+  varg.dblVal = lua_tonumber(L, index);
+  HRESULT hr = VariantChangeType(&varg, &varg, 0, VT_CY);
+  CHK_COM_CODE(hr);
+}
+
+// Values of the integer types other than VT_I8 and VT_UI8.
+LONGLONG signedVariantValue(const VARIANT& value)
+{
+  switch(value.vt)
+  {
+    case VT_I1: return static_cast<signed char>(value.cVal);
+    case VT_I2: return value.iVal;
+    case VT_I4: return value.lVal;
+    default: return value.intVal;
+  }
+}
+
+ULONGLONG unsignedVariantValue(const VARIANT& value)
+{
+  switch(value.vt)
+  {
+    case VT_UI1: return value.bVal;
+    case VT_UI2: return value.uiVal;
+    case VT_UI4: return value.ulVal;
+    default: return value.uintVal;
+  }
+}
+
+// Reads a format field of the luacom table; nil gives default_format.
+int readGlobalFormat(lua_State* L, const char* name,
+                     bool (*parse)(const char*, int*), int default_format)
+{
+  lua_getglobal(L, "luacom");
+  lua_pushstring(L, name);
+  getLuaTableValue(L, -2);
+  int format = default_format;
+  if(!lua_isnil(L, -1))
+  {
+    char message[96];
+    if(lua_type(L, -1) != LUA_TSTRING)
+    {
+      snprintf(message, sizeof(message), "%s must be a string.", name);
+      TYPECONV_ERROR(message);
+    }
+    if(!parse(lua_tostring(L, -1), &format))
+    {
+      snprintf(message, sizeof(message), "Unknown %s value '%.40s'.", name,
+               lua_tostring(L, -1));
+      TYPECONV_ERROR(message);
+    }
+  }
+  lua_pop(L, 2);
+  return format;
+}
+
 bool pushLuaDispatchIfSameState(lua_State* L, IUnknown* object)
 {
   tCOMPtr<IUnknown> proxy_manager;
@@ -346,6 +658,7 @@ bool pushLuaDispatchIfSameState(lua_State* L, IUnknown* object)
 
 
 tLuaCOMTypeHandler::tLuaCOMTypeHandler(ITypeInfo *ptypeinfo)
+  : date_format(CONVERSION_GLOBAL), decimal_format(CONVERSION_GLOBAL)
 {
   m_typeinfo.Attach(ptypeinfo);
   if(m_typeinfo) m_typeinfo->AddRef();
@@ -353,6 +666,61 @@ tLuaCOMTypeHandler::tLuaCOMTypeHandler(ITypeInfo *ptypeinfo)
 
 tLuaCOMTypeHandler::~tLuaCOMTypeHandler()
 {
+}
+
+
+bool tLuaCOMTypeHandler::parseDateFormat(const char* name, int* format)
+{
+  if(strcmp(name, "string") == 0)
+    *format = DATE_FORMAT_STRING;
+  else if(strcmp(name, "table") == 0)
+    *format = DATE_FORMAT_TABLE;
+  else if(strcmp(name, "string_ms_accurate") == 0)
+    *format = DATE_FORMAT_STRING_MS_ACCURATE;
+  else if(strcmp(name, "iso") == 0)
+    *format = DATE_FORMAT_ISO;
+  else
+    return false;
+  return true;
+}
+
+bool tLuaCOMTypeHandler::parseDecimalFormat(const char* name, int* format)
+{
+  if(strcmp(name, "number") == 0)
+    *format = DECIMAL_FORMAT_NUMBER;
+  else if(strcmp(name, "string") == 0)
+    *format = DECIMAL_FORMAT_STRING;
+  else if(strcmp(name, "exact") == 0)
+    *format = DECIMAL_FORMAT_EXACT;
+  else
+    return false;
+  return true;
+}
+
+/**
+  Sets the conversion of DATE, DECIMAL and CURRENCY values for this
+  handler. CONVERSION_GLOBAL follows the field of the luacom table.
+*/
+void tLuaCOMTypeHandler::setConversion(int dates, int decimals)
+{
+  date_format = dates;
+  decimal_format = decimals;
+}
+
+int tLuaCOMTypeHandler::dateFormat(lua_State* L)
+{
+  if(date_format != CONVERSION_GLOBAL)
+    return date_format;
+  return readGlobalFormat(L, "DateFormat", parseDateFormat,
+                          DATE_FORMAT_STRING);
+}
+
+int tLuaCOMTypeHandler::decimalFormat(lua_State* L)
+{
+  if(decimal_format != CONVERSION_GLOBAL)
+    return decimal_format;
+  return readGlobalFormat(L, "DecimalFormat", parseDecimalFormat,
+                          DECIMAL_FORMAT_NUMBER);
 }
 
 
@@ -403,7 +771,7 @@ struct tLuaCOMTypeHandler::ConversionContext
   VARIANTARG original; // borrowed; the caller owns this value
   bool explicit_type;
   VariantValue value, converted, formatted_date;
-  tStringBuffer text, date_format;
+  tStringBuffer text;
   std::vector<wchar_t> formatted;
   tLuaVector array_vector;
   std::vector<SAFEARRAYBOUND> array_bounds;
@@ -535,17 +903,44 @@ void tLuaCOMTypeHandler::com2luaImpl(lua_State* L, ConversionContext& context)
         else
           pushUnsignedInteger(L, varg.ullVal);
         break;
-      case VT_CY:
-      case VT_UI1:
-      case VT_UI2:
-      case VT_UI4:
-      case VT_INT:
-      case VT_UINT:
       case VT_I1:
       case VT_I2:
       case VT_I4:
-      case VT_R4:
+      case VT_INT:
+        if(is_variant && table_variants)
+          pushTableVarInteger(L, varg.vt, signedVariantValue(varg));
+        else
+          pushSignedInteger(L, signedVariantValue(varg));
+        break;
+      case VT_UI1:
+      case VT_UI2:
+      case VT_UI4:
+      case VT_UINT:
+        if(is_variant && table_variants)
+          pushTableVarUnsignedInteger(L, varg.vt, unsignedVariantValue(varg));
+        else
+          pushUnsignedInteger(L, unsignedVariantValue(varg));
+        break;
+      case VT_CY:
       case VT_DECIMAL:
+        {
+          const int decimalformat = decimalFormat(L);
+          if(decimalformat != DECIMAL_FORMAT_NUMBER)
+          {
+            const bool integers = decimalformat == DECIMAL_FORMAT_EXACT;
+            if(is_variant && table_variants)
+            {
+              pushTableVariantHeader(L, varg.vt);
+              pushExactDecimal(L, varg, integers);
+              lua_settable(L, -3);
+            }
+            else
+              pushExactDecimal(L, varg, integers);
+            break;
+          }
+        }
+        // DecimalFormat "number" converts through a double.
+      case VT_R4:
       case VT_R8:
         {
           new_varg.vt = VT_R8;
@@ -561,13 +956,8 @@ void tLuaCOMTypeHandler::com2luaImpl(lua_State* L, ConversionContext& context)
 
       case VT_DATE:
         {
-          lua_getglobal(L,"luacom");
-          lua_pushstring(L,"DateFormat");
-          getLuaTableValue(L, -2);
-          context.date_format = tStringBuffer(lua_tostring(L, -1));
-          const char* dateformat = context.date_format.getBuffer();
-             lua_pop(L, 2);
-          if(dateformat == NULL || (strcmp("string",dateformat)==0))
+          const int dateformat = dateFormat(L);
+          if(dateformat == DATE_FORMAT_STRING)
           {
             HRESULT hr = VariantChangeType(&new_varg, &varg, 0, VT_BSTR);
             CHK_COM_CODE(hr);
@@ -575,38 +965,57 @@ void tLuaCOMTypeHandler::com2luaImpl(lua_State* L, ConversionContext& context)
             context.text = tUtil::bstr2string(new_varg.bstrVal);
             lua_pushstring(L, context.text);
           }
-          else if(strcmp("table",dateformat)==0)
+          else if(dateformat == DATE_FORMAT_TABLE)
           {
             SYSTEMTIME date;
             if(!tUtil::VariantTimeToSystemTimeWithMilliseconds(varg.date, &date))
               COM_ERROR("Cannot convert COM date to system time.");
             lua_newtable(L);
             lua_pushstring(L, "Day");
-            lua_pushnumber(L, date.wDay);
+            lua_pushinteger(L, date.wDay);
             lua_settable(L, -3);
             lua_pushstring(L, "DayOfWeek");
-            lua_pushnumber(L, date.wDayOfWeek);
+            lua_pushinteger(L, date.wDayOfWeek);
             lua_settable(L, -3);
             lua_pushstring(L, "Month");
-            lua_pushnumber(L, date.wMonth);
+            lua_pushinteger(L, date.wMonth);
             lua_settable(L, -3);
             lua_pushstring(L, "Year");
-            lua_pushnumber(L, date.wYear);
+            lua_pushinteger(L, date.wYear);
             lua_settable(L, -3);
             lua_pushstring(L, "Hour");
-            lua_pushnumber(L, date.wHour);
+            lua_pushinteger(L, date.wHour);
             lua_settable(L, -3);
             lua_pushstring(L, "Minute");
-            lua_pushnumber(L, date.wMinute);
+            lua_pushinteger(L, date.wMinute);
             lua_settable(L, -3);
             lua_pushstring(L, "Second");
-            lua_pushnumber(L, date.wSecond);
+            lua_pushinteger(L, date.wSecond);
             lua_settable(L, -3);
             lua_pushstring(L, "Milliseconds");
-            lua_pushnumber(L, date.wMilliseconds);
+            lua_pushinteger(L, date.wMilliseconds);
             lua_settable(L, -3);
           }
-          else if(strcmp("string_ms_accurate",dateformat)==0)
+          else if(dateformat == DATE_FORMAT_ISO)
+          {
+            SYSTEMTIME date;
+            if(!tUtil::VariantTimeToSystemTimeWithMilliseconds(varg.date, &date))
+              COM_ERROR("Cannot convert COM date to system time.");
+            char text[32];
+            const int length = snprintf(
+              text, sizeof(text), "%04u-%02u-%02u %02u:%02u:%02u.%03u",
+              static_cast<unsigned>(date.wYear),
+              static_cast<unsigned>(date.wMonth),
+              static_cast<unsigned>(date.wDay),
+              static_cast<unsigned>(date.wHour),
+              static_cast<unsigned>(date.wMinute),
+              static_cast<unsigned>(date.wSecond),
+              static_cast<unsigned>(date.wMilliseconds));
+            if(length <= 0 || length >= static_cast<int>(sizeof(text)))
+              COM_ERROR("Cannot format COM date.");
+            lua_pushlstring(L, text, length);
+          }
+          else // DATE_FORMAT_STRING_MS_ACCURATE
           {
             SYSTEMTIME date;
             if(!tUtil::VariantTimeToSystemTimeWithMilliseconds(varg.date, &date))
@@ -918,6 +1327,26 @@ void tLuaCOMTypeHandler::lua2com(lua_State* L, stkIndex luaval, VARIANTARG& varg
       varg.vt = VT_UI8;
       break;
     }
+#if LUA_VERSION_NUM >= 503
+    // Integers: VT_I4 where they fit, VT_R8 while a double is exact,
+    // VT_I8 beyond.
+    if(lua_isinteger(L, luaval))
+    {
+      const lua_Integer value = lua_tointeger(L, luaval);
+      if(value >= -2147483647 - 1 && value <= 2147483647)
+      {
+        varg.lVal = static_cast<LONG>(value);
+        varg.vt = VT_I4;
+        break;
+      }
+      if(value < -9007199254740992LL || value > 9007199254740992LL)
+      {
+        varg.llVal = static_cast<LONGLONG>(value);
+        varg.vt = VT_I8;
+        break;
+      }
+    }
+#endif
     varg.dblVal = lua_tonumber(L, luaval);
     varg.vt = VT_R8;
     break;
@@ -1023,15 +1452,9 @@ void tLuaCOMTypeHandler::lua2com(lua_State* L, stkIndex luaval, VARIANTARG& varg
             varg.vt = VT_R4;
             varg.fltVal = (float)lua_tonumber(L, -1);
           } else if(strcmp(vtype, "currency") == 0) {
-            varg.vt = VT_R8;
-            varg.dblVal = lua_tonumber(L, -1);
-            HRESULT hr = VariantChangeType(&varg, &varg, 0, VT_CY);
-            CHK_COM_CODE(hr);
+            luaValueToCurrency(L, -1, varg);
           } else if(strcmp(vtype, "decimal") == 0) {
-            varg.vt = VT_R8;
-            varg.dblVal = lua_tonumber(L, -1);
-            HRESULT hr = VariantChangeType(&varg, &varg, 0, VT_DECIMAL);
-            CHK_COM_CODE(hr);
+            luaValueToDecimal(L, -1, varg);
           } else if(strcmp(vtype, "int8") == 0) {
             varg.vt = VT_I8;
             if(lua_type(L, -1) == LUA_TSTRING) {
@@ -1111,7 +1534,9 @@ void tLuaCOMTypeHandler::lua2com(lua_State* L, stkIndex luaval, VARIANTARG& varg
             varg.vt = VT_UINT;
             varg.uintVal = static_cast<UINT>(value);
           } else if(strcmp(vtype, "string") == 0) {
-            varg.bstrVal = tUtil::string2bstr(lua_tostring(L, -1));
+            size_t length = 0;
+            const char* value = lua_tolstring(L, -1, &length);
+            varg.bstrVal = tUtil::string2bstr(value, length);
             varg.vt = VT_BSTR;
           } else if(strcmp(vtype, "null") == 0) {
             varg.vt = VT_NULL;

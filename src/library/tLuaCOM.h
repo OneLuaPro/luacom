@@ -82,6 +82,10 @@ public:
    bool getConstant(lua_State* L, const char* name);
    bool getDISPID(const char* name, DISPID* dispid);
    void releaseComObject();
+   void setConversion(int dates, int decimals)
+   {
+     typehandler->setConversion(dates, decimals);
+   }
 
   volatile static long NEXT_ID;
 protected:

@@ -4,9 +4,25 @@ assert(type(config) == "table")
 
 local original_table_variants = luacom.TableVariants
 local original_date_format = luacom.DateFormat
+local original_decimal_format = luacom.DecimalFormat
 local original_code_page = luacom.GetCodepage()
 local original_abort_on_api_error = config.abort_on_API_error
 local original_last_error = config.last_error
+
+-- Lua 5.3 and later have an integer subtype; older versions only numbers.
+local function assert_integer(value, expected)
+  assert(value == expected)
+  if math.type then
+    assert(math.type(value) == "integer")
+  end
+end
+
+local function assert_float(value, expected)
+  assert(value == expected)
+  if math.type then
+    assert(math.type(value) == "float")
+  end
+end
 
 local function roundtrip_variant(variant_type, value)
   luacom.TableVariants = true
@@ -56,9 +72,31 @@ for _, value in ipairs({
   {"int", -2147483648, 2147483647},
   {"uint", 0, 4294967295},
 }) do
-  assert(roundtrip_variant(value[1], value[2]) == value[2])
-  assert(roundtrip_variant(value[1], value[3]) == value[3])
-  assert(roundtrip_variant(value[1], tostring(value[3])) == value[3])
+  assert_integer(roundtrip_variant(value[1], value[2]), value[2])
+  assert_integer(roundtrip_variant(value[1], value[3]), value[3])
+  assert_integer(roundtrip_variant(value[1], tostring(value[3])), value[3])
+end
+
+local integer_array = luacom.RoundTrip({Type = "array of int4", Value = {-1, 2}})
+assert_integer(integer_array[1], -1)
+assert_integer(integer_array[2], 2)
+local unsigned_array = luacom.RoundTrip({Type = "array of uint2", Value = {0, 65535}})
+assert_integer(unsigned_array[1], 0)
+assert_integer(unsigned_array[2], 65535)
+
+-- Plain Lua numbers: integers as VT_I4, as VT_R8 while a double is exact,
+-- and as VT_I8 beyond; floats as VT_R8.
+assert_integer(luacom.RoundTrip(5), 5)
+assert_integer(luacom.RoundTrip(-2147483648), -2147483648)
+assert_integer(luacom.RoundTrip(2147483647), 2147483647)
+assert_float(luacom.RoundTrip(5.0), 5.0)
+assert_float(luacom.RoundTrip(0.5), 0.5)
+if math.type and math.maxinteger and math.maxinteger > 9007199254740992 then
+  assert_float(luacom.RoundTrip(1099511627776), 1099511627776)
+  assert_float(luacom.RoundTrip(9007199254740992), 9007199254740992)
+  assert_integer(luacom.RoundTrip(9007199254740993), 9007199254740993)
+  assert_integer(luacom.RoundTrip(math.maxinteger), math.maxinteger)
+  assert_integer(luacom.RoundTrip(math.mininteger), math.mininteger)
 end
 
 for _, value in ipairs({
@@ -104,6 +142,7 @@ for _, value in ipairs({"", "plain text", "A\0B", "caf\195\169"}) do
   assert(luacom.RoundTrip(value) == value)
 end
 assert(luacom.RoundTrip({Type = "string", Value = "typed text"}) == "typed text")
+assert(luacom.RoundTrip({Type = "string", Value = "A\0B"}) == "A\0B")
 luacom.SetCodepage(original_code_page)
 
 assert(luacom.RoundTrip(true) == true)
@@ -236,6 +275,52 @@ for _, year in ipairs({100, 1600}) do
   end
 end
 
+for _, field in ipairs({"Year", "Month", "Day", "DayOfWeek", "Hour", "Minute",
+                        "Second", "Milliseconds"}) do
+  assert(date_result[field] ~= nil)
+  assert_integer(date_result[field], math.floor(date_result[field]))
+end
+
+-- The iso format does not depend on the locale and keeps the milliseconds.
+luacom.DateFormat = "iso"
+assert(luacom.RoundTrip(date) == "2024-06-20 12:01:01.499")
+assert(luacom.RoundTrip(historical_date) == "1899-12-29 12:34:56.499")
+assert(luacom.RoundTrip(automation_epoch) == "1899-12-30 00:00:00.000")
+assert(luacom.RoundTrip({
+  Year = 100,
+  Month = 1,
+  Day = 2,
+  Hour = 0,
+  Minute = 0,
+  Second = 0,
+  Milliseconds = 999,
+}) == "0100-01-02 00:00:00.999")
+assert(luacom.RoundTrip({
+  Year = 9999,
+  Month = 12,
+  Day = 31,
+  Hour = 23,
+  Minute = 59,
+  Second = 59,
+  Milliseconds = 0,
+}) == "9999-12-31 23:59:59.000")
+
+-- Unknown values of DateFormat and DecimalFormat are conversion errors.
+config.abort_on_API_error = true
+for _, value in ipairs({
+  {"DateFormat", "no_such_format", automation_epoch},
+  {"DateFormat", true, automation_epoch},
+  {"DecimalFormat", "no_such_format", {Type = "decimal", Value = "1"}},
+  {"DecimalFormat", 1, {Type = "decimal", Value = "1"}},
+}) do
+  luacom[value[1]] = value[2]
+  local ok, message = pcall(luacom.RoundTrip, value[3])
+  assert(not ok)
+  assert(type(message) == "string" and message:find(value[1], 1, true))
+  luacom[value[1]] = nil
+end
+config.abort_on_API_error = original_abort_on_api_error
+
 luacom.DateFormat = "string_ms_accurate"
 date.Second = 59
 date.Milliseconds = 499
@@ -261,11 +346,156 @@ for _, year in ipairs({100, 1600}) do
   assert(#luacom.RoundTrip(date) > 0)
 end
 
+-- DECIMAL and CURRENCY: DecimalFormat "number" (the default) converts
+-- through a double, "string" gives exact text, "exact" gives integers for
+-- DECIMAL values of scale 0 where they fit.
+luacom.DateFormat = nil
+luacom.DecimalFormat = nil
+assert_float(luacom.RoundTrip({Type = "decimal", Value = "0.5"}), 0.5)
+assert_float(luacom.RoundTrip({Type = "currency", Value = "12.25"}), 12.25)
+
+luacom.DecimalFormat = "string"
+for _, text in ipairs({
+  "12345678901234567890.123456789",
+  "-0.10",
+  "79228162514264337593543950335",
+  "-79228162514264337593543950335",
+  "0",
+  "0.0000000000000000000000000001",
+  "1.000000000",
+}) do
+  assert(luacom.RoundTrip({Type = "decimal", Value = text}) == text)
+end
+assert(luacom.RoundTrip({Type = "decimal", Value = "+1.50"}) == "1.50")
+assert(luacom.RoundTrip({Type = "decimal", Value = "-0"}) == "0")
+assert(luacom.RoundTrip({Type = "currency", Value = "12.34"}) == "12.3400")
+assert(luacom.RoundTrip({Type = "currency", Value = "-922337203685477.5808"})
+       == "-922337203685477.5808")
+assert(luacom.RoundTrip({Type = "currency", Value = "922337203685477.5807"})
+       == "922337203685477.5807")
+assert(luacom.RoundTrip({Type = "currency", Value = "5"}) == "5.0000")
+if math.type then
+  assert(luacom.RoundTrip({Type = "decimal", Value = 42}) == "42")
+  assert(luacom.RoundTrip({Type = "currency", Value = 5}) == "5.0000")
+end
+if math.type and math.maxinteger and math.maxinteger > 9007199254740992 then
+  assert(luacom.RoundTrip({Type = "decimal", Value = math.mininteger})
+         == "-9223372036854775808")
+end
+
+luacom.DecimalFormat = "exact"
+assert_integer(luacom.RoundTrip({Type = "decimal", Value = "42"}), 42)
+assert_integer(luacom.RoundTrip({Type = "decimal", Value = "-42"}), -42)
+assert(luacom.RoundTrip({Type = "decimal", Value = "42.0"}) == "42.0")
+assert(luacom.RoundTrip({Type = "decimal", Value = "1.5"}) == "1.5")
+assert(luacom.RoundTrip({Type = "currency", Value = "5"}) == "5.0000")
+if math.type and math.maxinteger and math.maxinteger > 9007199254740992 then
+  assert_integer(luacom.RoundTrip({Type = "decimal",
+                                   Value = "-9223372036854775808"}),
+                 math.mininteger)
+  assert_integer(luacom.RoundTrip({Type = "decimal",
+                                   Value = "9223372036854775807"}),
+                 math.maxinteger)
+  assert(luacom.RoundTrip({Type = "decimal", Value = "18446744073709551615"})
+         == "18446744073709551615")
+  assert(luacom.RoundTrip({Type = "decimal", Value = "-9223372036854775809"})
+         == "-9223372036854775809")
+end
+
+config.abort_on_API_error = true
+local invalid_numbers = {
+  {"decimal", "79228162514264337593543950336"},
+  {"decimal", "0.00000000000000000000000000001"},
+  {"decimal", "1e5"},
+  {"decimal", "1,5"},
+  {"decimal", " 1"},
+  {"decimal", "1 "},
+  {"decimal", ""},
+  {"decimal", "-"},
+  {"decimal", ".5"},
+  {"decimal", "1."},
+  {"decimal", "1.2.3"},
+  {"decimal", "0x10"},
+  {"currency", "1.23456"},
+  {"currency", "922337203685477.5808"},
+  {"currency", "-922337203685477.5809"},
+  {"currency", "1,5"},
+}
+if math.type then
+  table.insert(invalid_numbers, {"currency", 922337203685478})
+  table.insert(invalid_numbers, {"currency", -922337203685478})
+end
+for _, value in ipairs(invalid_numbers) do
+  local ok, message = pcall(luacom.RoundTrip, {Type = value[1], Value = value[2]})
+  assert(not ok)
+  assert(type(message) == "string" and #message > 0)
+end
+config.abort_on_API_error = original_abort_on_api_error
+luacom.DecimalFormat = nil
+
+-- SetConversion sets the formats for one object and leaves the fields of
+-- the luacom table alone. Scripting.Dictionary keeps its values unchanged.
+local exact_decimal = "12345678901234567890.123456789"
+local converted = assert(luacom.CreateInprocObject("Scripting.Dictionary"))
+local plain = assert(luacom.CreateInprocObject("Scripting.Dictionary"))
+for _, dictionary in ipairs({converted, plain}) do
+  dictionary:Add("decimal", {Type = "decimal", Value = exact_decimal})
+  dictionary:Add("date", {
+    Year = 2024,
+    Month = 6,
+    Day = 20,
+    Hour = 12,
+    Minute = 1,
+    Second = 1,
+    Milliseconds = 499,
+  })
+  dictionary:Add("integer", 5)
+end
+assert_integer(plain:Item("integer"), 5)
+
+luacom.SetConversion(converted, {DateFormat = "iso", DecimalFormat = "string"})
+assert(converted:Item("decimal") == exact_decimal)
+assert(converted:Item("date") == "2024-06-20 12:01:01.499")
+assert(type(plain:Item("decimal")) == "number")
+assert(plain:Item("date") ~= "2024-06-20 12:01:01.499")
+assert(luacom.DateFormat == nil and luacom.DecimalFormat == nil)
+
+luacom.DateFormat = "table"
+assert(converted:Item("date") == "2024-06-20 12:01:01.499")
+assert(type(plain:Item("date")) == "table")
+luacom.DateFormat = nil
+
+luacom.SetConversion(converted, {DecimalFormat = "exact"})
+assert(converted:Item("decimal") == exact_decimal)
+assert(type(converted:Item("date")) == "string")
+assert(converted:Item("date") ~= "2024-06-20 12:01:01.499")
+
+-- Invalid settings are refused and change nothing.
+config.abort_on_API_error = true
+for _, settings in ipairs({
+  {DateFormat = "no_such_format"},
+  {DecimalFormat = true},
+  {NoSuchSetting = "iso"},
+  {DateFormat = "iso", DecimalFormat = "no_such_format"},
+}) do
+  assert(not pcall(luacom.SetConversion, converted, settings))
+  assert(converted:Item("decimal") == exact_decimal)
+  assert(converted:Item("date") ~= "2024-06-20 12:01:01.499")
+end
+assert(not pcall(luacom.SetConversion, {}, {DateFormat = "iso"}))
+config.abort_on_API_error = original_abort_on_api_error
+
+luacom.SetConversion(converted)
+assert(type(converted:Item("decimal")) == "number")
+luacom.ReleaseComObject(converted)
+luacom.ReleaseComObject(plain)
+
 luacom.SetCodepage(original_code_page)
 assert(luacom.GetCodepage() == original_code_page)
 
 luacom.TableVariants = original_table_variants
 luacom.DateFormat = original_date_format
+luacom.DecimalFormat = original_decimal_format
 assert(luacom.config == config)
 config.abort_on_API_error = original_abort_on_api_error
 config.last_error = original_last_error

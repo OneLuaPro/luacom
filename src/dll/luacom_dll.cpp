@@ -1,5 +1,6 @@
 
 #include <windows.h>
+#include <stdio.h>
 extern "C" {
   #include "lua.h"
   #include "lualib.h"
@@ -36,7 +37,68 @@ extern "C" {
 #include "tUtil.h"
 #include "tCOMUtil.h"
 
+// COM is initialized for the thread that opens luacom in a Lua state, not
+// in DllMain (the loader lock forbids it there, and it reached only the
+// thread that loaded the DLL). The state undoes its initialization when it
+// is closed on the same thread.
+struct ApartmentOwner {
+  DWORD thread_id;
+  bool initialized;
+};
+
+static const char apartment_key[] = "luacom_apartment";
+
+static int apartment_gc(lua_State* L) {
+  ApartmentOwner* owner = (ApartmentOwner*)lua_touserdata(L, 1);
+  if(owner && owner->initialized &&
+     owner->thread_id == GetCurrentThreadId()) {
+    owner->initialized = false;
+    OleUninitialize();
+  }
+  return 0;
+}
+
+static void initializeApartment(lua_State* L) {
+  lua_getfield(L, LUA_REGISTRYINDEX, apartment_key);
+  const bool present = !lua_isnil(L, -1);
+  lua_pop(L, 1);
+  if(present)
+    return;
+
+  // The owner is created before any LuaCOM object of the state, so
+  // lua_close finalizes it after them. It is anchored before
+  // OleInitialize, so a failed allocation leaves COM untouched.
+  ApartmentOwner* owner =
+    (ApartmentOwner*)lua_newuserdata(L, sizeof(ApartmentOwner));
+  owner->thread_id = GetCurrentThreadId();
+  owner->initialized = false;
+  lua_newtable(L);
+  lua_pushcfunction(L, apartment_gc);
+  lua_setfield(L, -2, "__gc");
+  lua_setmetatable(L, -2);
+  lua_setfield(L, LUA_REGISTRYINDEX, apartment_key);
+
+  // STA, as before in DllMain. S_FALSE: the host has initialized the
+  // thread already; the count is balanced at close all the same.
+  // RPC_E_CHANGED_MODE: the host made the thread MTA; COM works there,
+  // nothing is to be undone.
+  const HRESULT hr = OleInitialize(NULL);
+  if(hr == S_OK || hr == S_FALSE)
+    owner->initialized = true;
+  else if(hr != RPC_E_CHANGED_MODE) {
+    char message[64];
+    _snprintf(message, sizeof(message),
+              "luacom: OleInitialize failed (HRESULT 0x%08X)",
+              (unsigned int)hr);
+    message[sizeof(message) - 1] = '\0';
+    luaL_error(L, "%s", message);
+  }
+}
+
+// luaopen_luacom and luacom_openlib initialize COM; a host that calls
+// luacom_open or luacom_open_core directly initializes COM itself.
 extern "C" int luacom_openlib(lua_State* L) {
+  initializeApartment(L);
   luacom_open(L);
   lua_getglobal(L, LIBNAME);
   return 1;
@@ -206,11 +268,9 @@ BOOL WINAPI DllMain( HANDLE hModule,
 {
   g_hInstance = (HINSTANCE)hModule;
   if(ul_reason_for_call == DLL_PROCESS_ATTACH) {
-    OleInitialize(NULL);
     factoryCache_Init();
   } else if(ul_reason_for_call == DLL_PROCESS_DETACH) {
     factoryCache_Release();
-    OleUninitialize();
   }
     return TRUE;
 }

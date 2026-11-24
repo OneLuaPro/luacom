@@ -64,7 +64,25 @@ public:
     ITypeInfo* typeinfo,
     TYPEDESC tdesc);
 
+  // Conversion of DATE, DECIMAL and CURRENCY values to Lua.
+  // CONVERSION_GLOBAL follows the DateFormat and DecimalFormat fields
+  // of the luacom table.
+  enum { CONVERSION_GLOBAL = -1 };
+  enum { DATE_FORMAT_STRING, DATE_FORMAT_TABLE,
+         DATE_FORMAT_STRING_MS_ACCURATE, DATE_FORMAT_ISO };
+  enum { DECIMAL_FORMAT_NUMBER, DECIMAL_FORMAT_STRING,
+         DECIMAL_FORMAT_EXACT };
+
+  static bool parseDateFormat(const char* name, int* format);
+  static bool parseDecimalFormat(const char* name, int* format);
+  void setConversion(int dates, int decimals);
+
 protected:
+  int dateFormat(lua_State* L);
+  int decimalFormat(lua_State* L);
+  int date_format;
+  int decimal_format;
+
   struct ConversionContext;
   static int protectedCom2Lua(lua_State* L);
   void com2luaImpl(lua_State* L, ConversionContext& context);

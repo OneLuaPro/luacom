@@ -266,6 +266,26 @@ Using Lua to dynamically load \luacom\ is simpler. Just call
 \verb+luacom.dll+ is in your \verb+LUA_CPATH+ environment variable and
 that Lua's DLLs (e.g. \verb+lua5.1.dll+) are in your \verb+PATH+.
 
+When loaded with \verb+require+ (or opened through
+\verb+luacom_openlib+), \luacom\ initializes \com\ for the calling
+thread with \ident{OleInitialize} (a single-threaded apartment) and
+undoes it when the Lua state is closed on the same thread. A thread
+that the host has initialized already is used as it is, also a
+multithreaded apartment. A host that calls \verb+luacom_open+ or
+\verb+luacom_open_core+ directly initializes \com\ itself, as shown
+above.
+
+Each thread that uses \luacom\ needs a Lua state of its own that
+requires \luacom\ in that thread. Libraries that prepare the state of
+a thread in another thread (for example Lua Lanes with its options
+\verb+required+ and \verb+on_state_create+) initialize \com\ in the
+wrong thread; require \luacom\ in the body of the thread instead. A
+thread should also release its \com\ objects before it ends: if its
+Lua state is closed by another thread (Lua Lanes closes the state of a
+lane in the thread that reads its results), the objects are released
+there, which the rules of \com\ do not allow for objects of a
+single-threaded apartment.
+
 %OLD 1.3: \verb+luacom.lua+ is in your \verb+LUA_PATH+ environment
 % variable, and the Lua and \luacom\ DLLs (\verb+lua-5.0.dll+,
 % \verb+lualib-5.0.dll+ and
@@ -1447,13 +1467,30 @@ does not have a \verb+typelib+ field, \luacom\ will look for a \verb+progid+ fie
 an \verb+interface+ field, and pass those to the \verb+ImplInterface+ API call. Either way,
 \luacom\ will pass the returned object to COM.
 
-\subsection{\ident{CURRENCY} type}
-The \ident{CURRENCY} values are converted to \lua\ as numbers. When
-converting a value to \com\ where a \ident{CURRENCY} is expected,
+\subsection{\ident{CURRENCY} and \ident{DECIMAL} types}
+By default, \ident{CURRENCY} and \ident{DECIMAL} values are converted
+to \lua\ as numbers, through a double, which can lose digits. Set the
+\verb+DecimalFormat+ field of the \verb+luacom+ table to
+\verb+"string"+ to get the exact value as text, with a point as the
+decimal separator independent of the locale and with all decimals of
+the scale (\ident{CURRENCY} always has four, e.g. \verb+"12.3400"+).
+With \verb+"exact"+, a \ident{DECIMAL} value of scale 0 becomes a Lua
+integer where it fits (as described for \verb+VT_I8+ below), all other
+values become text as with \verb+"string"+. The value \verb+"number"+
+or \verb+nil+ gives the default; any other value is a conversion
+error. A \ident{DECIMAL} value holds at most 29 significant digits. The
+API function \verb+SetConversion+ sets the format for one object.
+
+When converting a value to \com\ where a \ident{CURRENCY} is expected,
 \luacom\ accepts both numbers and strings formatted using the current
 locale for currency values. Notice that this is highly dependent on
 the configuration and \luacom\ just uses the VARIANT conversion
-functions.
+functions. The table forms \verb+{Type="decimal", Value=v}+ and
+\verb+{Type="currency", Value=v}+ convert a string exactly: an optional
+sign, digits, and optionally a point followed by digits, with at most 28
+decimals for \ident{DECIMAL} and 4 for \ident{CURRENCY}. Any other
+string, or a value out of range, is a conversion error. Lua integers
+are converted exactly, other numbers through a double.
 
 \subsection{\ident{DATE} type}
 
@@ -1475,6 +1512,13 @@ Set the \verb+DateFormat+ field to \verb+"string_ms_accurate"+ to
 format the value as a locale-specific string with correct rounding at
 the half-second boundary. This option does not change the default format.
 
+Set the \verb+DateFormat+ field to \verb+"iso"+ to get the text
+\verb+"YYYY-MM-DD HH:MM:SS.mmm"+, independent of the locale and with
+milliseconds. Any other value of \verb+DateFormat+ than the ones
+described here is a conversion error. On Lua 5.3 and later the fields
+of the table form are Lua integers. The API function
+\verb+SetConversion+ sets the format for one object.
+
 \subsection{Variants}
 
 When converting from \com\ to \lua, the default behavior is to
@@ -1487,9 +1531,17 @@ the variant, and a \verb+Value+ field containing the conversion to
 the closest Lua type. Be careful with this feature, as it may break
 compatibility with other scripts.
 
-On Lua 5.3 and later, \ident{VT_I8} and \ident{VT_UI8} values use the
-Lua integer subtype when the value is in its range. Larger unsigned
-values use a Lua number and can lose precision.
+On Lua 5.3 and later, integer values (\verb+VT_I1+, \verb+VT_I2+,
+\verb+VT_I4+, \verb+VT_I8+, \verb+VT_INT+ and their unsigned
+counterparts) use the Lua integer subtype when the value is in its
+range. Values that a Lua number cannot hold exactly become a string of
+decimal digits.
+
+When a Lua number is converted to \com\ without a known type, Lua 5.3
+and later pass an integer as \verb+VT_I4+ if it fits in 32 bits, as
+\verb+VT_R8+ while a double holds it exactly (up to $2^{53}$), and as
+\verb+VT_I8+ beyond. Floats, and all numbers on Lua 5.1 and 5.2, are
+passed as \verb+VT_R8+.
 
 \subsection{Error Handling}
 When \luacom\ cannot convert a value from or to \com\, it issues an
@@ -3552,6 +3604,51 @@ while s do
   print(s.Name)
   s = e:Next()
 end
+\end{verbatim}
+
+\subsection*{SetConversion}
+
+\subsubsection*{Use}
+
+\begin{verbatim}
+luacom.SetConversion(luacom_obj, settings)
+luacom.SetConversion(luacom_obj)
+\end{verbatim}
+
+\subsubsection*{Description}
+Sets how one \luacom\ object converts \ident{DATE}, \ident{DECIMAL}
+and \ident{CURRENCY} values to \lua: in the values of its properties,
+the results of its methods and its out parameters. The table
+\verb+settings+ may have the fields \verb+DateFormat+ and
+\verb+DecimalFormat+, with the same values as the fields of the
+\verb+luacom+ table (section \ref{sect:type_conv}). A missing field,
+or a call without \verb+settings+, makes the object follow the field
+of the \verb+luacom+ table again. An unknown field or value is an API
+error and changes nothing. The settings are not passed on to the
+objects that this object returns, and they do not change the fields of
+the \verb+luacom+ table.
+
+\subsubsection*{Parameters}
+\begin{tabular}{|c|c|}
+\hline
+\bf Parameter & \bf Type  \\ \hline \hline
+luacom\_obj & \luacom\ object  \\ \hline
+settings & table (optional)  \\ \hline
+\end{tabular}
+
+\subsubsection*{Return Values}
+
+None.
+
+\subsubsection*{Sample}
+
+\begin{verbatim}
+-- Reads a NUMERIC column exactly and a date as ISO text, without
+-- changing the settings of the rest of the program
+local field = recordset.Fields:Item(0)
+luacom.SetConversion(field, {DecimalFormat = "string",
+                             DateFormat = "iso"})
+print(field.Value)
 \end{verbatim}
 
 \section{Lua Extended API}

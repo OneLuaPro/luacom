@@ -2478,6 +2478,58 @@ static int luacom_SetCodepage(lua_State *L) {
 }
 
 
+/**
+  Sets how one LuaCOM object converts DATE, DECIMAL and CURRENCY
+  values to Lua.
+
+  Parameters:
+   (1) LuaCOM object
+   (2) table with the fields DateFormat and DecimalFormat (optional);
+       a missing field follows the field of the luacom table
+*/
+static int luacom_SetConversion(lua_State *L)
+{
+  // check parameters
+  tLuaCOM* obj = (tLuaCOM *) LuaBeans::check_tag(L, 1);
+  int date_format = tLuaCOMTypeHandler::CONVERSION_GLOBAL;
+  int decimal_format = tLuaCOMTypeHandler::CONVERSION_GLOBAL;
+
+  if(!lua_isnoneornil(L, 2))
+  {
+    luaL_checktype(L, 2, LUA_TTABLE);
+    lua_pushnil(L);
+    while(lua_next(L, 2) != 0)
+    {
+      const char* key = lua_type(L, -2) == LUA_TSTRING ?
+        lua_tostring(L, -2) : NULL;
+      const char* value = lua_type(L, -1) == LUA_TSTRING ?
+        lua_tostring(L, -1) : NULL;
+      bool valid = false;
+      if(key && strcmp(key, "DateFormat") == 0)
+        valid = value &&
+          tLuaCOMTypeHandler::parseDateFormat(value, &date_format);
+      else if(key && strcmp(key, "DecimalFormat") == 0)
+        valid = value &&
+          tLuaCOMTypeHandler::parseDecimalFormat(value, &decimal_format);
+      else
+      {
+        lua_pushstring(L, "Unknown conversion setting.");
+        return -1;
+      }
+      if(!valid)
+      {
+        lua_pushfstring(L, "Unknown %s value.", key);
+        return -1;
+      }
+      lua_pop(L, 1);
+    }
+  }
+
+  obj->setConversion(date_format, decimal_format);
+  return 0;
+}
+
+
 static int luacom_ReleaseComObject(lua_State *L)
 {
   // check parameters
@@ -2534,6 +2586,7 @@ static struct luaL_Reg functions_tb []=
   {"GetCodepage", luacom_GetCodepage},	// -hg 24.9.2015
   {"SetCodepage", luacom_SetCodepage},
   {"ReleaseComObject", reportLuaCOMCall<luacom_ReleaseComObject, true>}, //hg 06.09.2022
+  {"SetConversion", reportLuaCOMCall<luacom_SetConversion, true>},
   {NULL, NULL}
 };
   
